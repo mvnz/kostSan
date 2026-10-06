@@ -35,7 +35,7 @@ Sesuaikan `.env` dengan database masing-masing. Jangan menjalankan migrasi atau 
 
 ## Ekspor pembayaran untuk rekonsiliasi
 
-Buka **Pembayaran**, pilih **Bulan periode** dan/atau **Status pembayaran**, lalu tekan **Terapkan** dan **Export CSV**. Ringkasan dan CSV mengikuti kedua filter ini. Pencarian pada tabel hanya mengubah tampilan, bukan isi ekspor.
+Buka **Pembayaran**, isi **Penghuni atau kamar** untuk mencari sebagian nama penghuni atau nomor kamar. Kombinasikan dengan **Bulan periode**, **Status pembayaran**, dan **Metode pembayaran**, lalu tekan **Terapkan**. Ringkasan transaksi, nominal lunas/belum lunas, dan **Export CSV** mengikuti semua filter yang diterapkan. Gunakan **Reset** untuk menampilkan semua pembayaran. Pencarian tambahan pada tabel hanya mengubah tampilan, bukan isi ekspor; gunakan kolom **Penghuni atau kamar** jika hasil pencarian perlu diekspor.
 
 CSV berisi ID pembayaran, nomor kamar, nama penghuni, periode, tanggal bayar, metode, nominal, dan status. Nominal tidak memakai pemisah ribuan sehingga mudah dijumlahkan. CSV menggunakan UTF-8 dan input yang berpotensi menjadi formula spreadsheet diberi awalan apostrof. Hak **Lihat Data Sewa** diperlukan; ekspor tidak mengirim pesan ke penghuni dan tidak mengubah transaksi. Status `belum_lunas` mencakup tagihan yang belum dibayar maupun pembayaran yang belum disetujui sesuai model saat ini.
 
