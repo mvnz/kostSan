@@ -6,6 +6,8 @@
     $totalLunas = $pembayarans->where('status', 'lunas')->count();
     $totalPending = $pembayarans->where('status', 'belum_lunas')->count();
     $totalNominal = (float) $pembayarans->sum('jumlah');
+    $nominalLunas = (float) $pembayarans->where('status', 'lunas')->sum('jumlah');
+    $nominalPending = (float) $pembayarans->where('status', 'belum_lunas')->sum('jumlah');
 @endphp
 
 <style>
@@ -83,15 +85,17 @@
                 <small class="text-body-secondary">Sudah Lunas</small>
             </div>
             <h5 class="mb-0">{{ number_format($totalLunas, 0, ',', '.') }}</h5>
+            <small class="text-body-secondary d-block mt-1">Rp {{ number_format($nominalLunas, 0, ',', '.') }}</small>
         </div>
     </div>
     <div class="col-6 col-md-3">
         <div class="payment-stat-card">
             <div class="d-flex align-items-center gap-2 mb-2">
                 <span class="payment-stat-icon bg-label-warning text-warning"><i class="bx bx-time-five"></i></span>
-                <small class="text-body-secondary">Menunggu Approve</small>
+                <small class="text-body-secondary">Belum Lunas</small>
             </div>
             <h5 class="mb-0">{{ number_format($totalPending, 0, ',', '.') }}</h5>
+            <small class="text-body-secondary d-block mt-1">Rp {{ number_format($nominalPending, 0, ',', '.') }}</small>
         </div>
     </div>
     <div class="col-6 col-md-3">
@@ -112,7 +116,7 @@
             <small class="text-body-secondary">Kelola pembayaran periodik penghuni.</small>
         </div>
         <div class="d-flex gap-2">
-            <a href="{{ route('pembayarans.export', request()->only(['bulan', 'status'])) }}" class="btn btn-outline-secondary"><i class="bx bx-export me-1"></i>Export CSV</a>
+            <a href="{{ route('pembayarans.export', request()->only(['q', 'bulan', 'status', 'metode'])) }}" class="btn btn-outline-secondary"><i class="bx bx-export me-1"></i>Export CSV</a>
             @canMenu('manajemen_sewa.data_sewa', 'create')
             <a href="{{ route('pembayarans.bulk-billing') }}" class="btn btn-outline-primary"><i class="bx bx-receipt me-1"></i>Bulk Billing</a>
             <a href="{{ route('pembayarans.create') }}" class="btn btn-primary"><i class="bx bx-plus me-1"></i>Tambah Pembayaran</a>
@@ -122,10 +126,14 @@
     <div class="card-body border-bottom">
         <form method="GET" action="{{ route('pembayarans.index') }}" class="row g-2 align-items-end">
             <div class="col-md-4">
+                <label for="payment-search" class="form-label">Penghuni atau kamar</label>
+                <input id="payment-search" type="search" name="q" value="{{ request('q') }}" maxlength="100" placeholder="Nama penghuni / nomor kamar" class="form-control">
+            </div>
+            <div class="col-md-2">
                 <label for="payment-month" class="form-label">Bulan periode</label>
                 <input id="payment-month" type="month" name="bulan" value="{{ request('bulan') }}" class="form-control">
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label for="payment-status" class="form-label">Status pembayaran</label>
                 <select id="payment-status" name="status" class="form-select">
                     <option value="">Semua status</option>
@@ -133,12 +141,21 @@
                     <option value="lunas" @selected(request('status') === 'lunas')>Lunas</option>
                 </select>
             </div>
-            <div class="col-md-4 d-flex gap-2">
+            <div class="col-md-3">
+                <label for="payment-method" class="form-label">Metode pembayaran</label>
+                <select id="payment-method" name="metode" class="form-select">
+                    <option value="">Semua metode</option>
+                    <option value="cash" @selected(request('metode') === 'cash')>Tunai</option>
+                    <option value="transfer" @selected(request('metode') === 'transfer')>Transfer</option>
+                    <option value="e-wallet" @selected(request('metode') === 'e-wallet')>E-wallet</option>
+                </select>
+            </div>
+            <div class="col-12 d-flex justify-content-end gap-2">
                 <button type="submit" class="btn btn-primary">Terapkan</button>
                 <a href="{{ route('pembayarans.index') }}" class="btn btn-outline-secondary">Reset</a>
             </div>
         </form>
-        <small class="text-body-secondary d-block mt-2">Ringkasan dan Export CSV mengikuti filter bulan dan status. Pencarian tabel hanya memfilter tampilan.</small>
+        <small class="text-body-secondary d-block mt-2">Ringkasan dan Export CSV mengikuti semua filter di atas. Pencarian pada tabel hanya mengubah baris yang ditampilkan.</small>
     </div>
     <div class="card-datatable table-responsive">
         <table class="table datatable" id="tbl-pembayaran" data-mobile-cols="2,4,5,6">
