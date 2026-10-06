@@ -1,0 +1,53 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Kamar;
+use App\Models\Sewa;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
+
+class LaporanHunianController extends Controller
+{
+    public function index(Request $request)
+    {
+        $tahun = (int) ($request->integer('tahun') ?: Carbon::now()->year);
+        $totalKamar = Kamar::count();
+
+        $bulanData = [];
+        for ($m = 1; $m <= 12; $m++) {
+            $awal  = Carbon::create($tahun, $m, 1)->startOfMonth();
+            $akhir = $awal->copy()->endOfMonth();
+
+            $terisi = Sewa::where('tanggal_masuk', '<=', $akhir)
+                ->where(function ($q) use ($awal) {
+                    $q->whereNull('tanggal_keluar')
+                      ->orWhere('tanggal_keluar', '>=', $awal);
+                })
+                ->where('status', 'aktif')
+                ->count();
+
+            $pct = $totalKamar > 0 ? round($terisi / $totalKamar * 100, 1) : 0;
+
+            $bulanData[] = [
+                'bulan'       => $awal->translatedFormat('F'),
+                'bulan_short' => $awal->translatedFormat('M'),
+                'terisi'      => $terisi,
+                'kosong'      => max(0, $totalKamar - $terisi),
+                'pct'         => $pct,
+            ];
+        }
+
+        // Per-kamar status saat ini
+        $kamars = Kamar::with(['sewas' => function ($q) {
+            $q->with('penghuni')->where('status', 'aktif');
+        }])->orderBy('nomor')->get();
+
+        $avgHunian = round(collect($bulanData)->avg('pct'), 1);
+        $tahunList = range(Carbon::now()->year, max(2024, Carbon::now()->year - 4), -1);
+
+        return view('laporan-hunian.index', compact(
+            'bulanData', 'totalKamar', 'tahun', 'tahunList', 'kamars', 'avgHunian'
+        ));
+    }
+}
