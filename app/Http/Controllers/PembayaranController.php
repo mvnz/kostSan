@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class PembayaranController extends Controller
 {
@@ -146,28 +147,42 @@ class PembayaranController extends Controller
             'bukti_pembayaran' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:4096'],
         ]);
 
-        // Hindari bypass approval dari form edit.
-        if ($pembayaran->status !== 'lunas') {
+        DB::transaction(function () use ($request, $pembayaran, $validated): void {
+            $pembayaran = Pembayaran::whereKey($pembayaran->id)->lockForUpdate()->firstOrFail();
+            $this->assertPaymentEditable($pembayaran);
             $validated['status'] = 'belum_lunas';
-        }
 
-        if ($request->hasFile('bukti_pembayaran')) {
-            if ($pembayaran->bukti_pembayaran_path) {
-                Storage::disk('local')->delete($pembayaran->bukti_pembayaran_path);
+            if ($request->hasFile('bukti_pembayaran')) {
+                if ($pembayaran->bukti_pembayaran_path) {
+                    Storage::disk('local')->delete($pembayaran->bukti_pembayaran_path);
+                }
+                $validated['bukti_pembayaran_path'] = $request->file('bukti_pembayaran')->store('bukti-pembayaran-sewa', 'local');
             }
-            $validated['bukti_pembayaran_path'] = $request->file('bukti_pembayaran')->store('bukti-pembayaran-sewa', 'local');
-        }
 
-        $pembayaran->update($validated);
+            $pembayaran->update($validated);
+        });
 
         return redirect()->route('pembayarans.index')->with('success', 'Data pembayaran berhasil diperbarui.');
     }
 
     public function destroy(Pembayaran $pembayaran)
     {
-        $pembayaran->delete();
+        DB::transaction(function () use ($pembayaran): void {
+            $payment = Pembayaran::whereKey($pembayaran->id)->lockForUpdate()->firstOrFail();
+            $this->assertPaymentEditable($payment);
+            $payment->delete();
+        });
 
         return redirect()->route('pembayarans.index')->with('success', 'Data pembayaran berhasil dihapus.');
+    }
+
+    private function assertPaymentEditable(Pembayaran $payment): void
+    {
+        if ($payment->status === 'lunas') {
+            throw ValidationException::withMessages([
+                'pembayaran' => 'Pembayaran yang sudah disetujui tidak dapat diubah atau dihapus. Catat koreksi secara terpisah untuk menjaga riwayat.',
+            ]);
+        }
     }
 
     public function approve(Pembayaran $pembayaran)
@@ -214,70 +229,85 @@ class PembayaranController extends Controller
         return back()->with('success', $approved ? 'Pembayaran disetujui. Sewa yang sudah selesai tetap selesai.' : 'Pembayaran ini sudah disetujui sebelumnya.');
     }
 
+    private function billingPeriod(Request $request): Carbon
+    {
+        $validated = $request->validate(['bulan' => ['nullable', 'date_format:Y-m']]);
+
+        return Carbon::createFromFormat('!Y-m', $validated['bulan'] ?? now()->format('Y-m'));
+    }
+
+    private function billableLeases(Carbon $periode): Builder
+    {
+        return Sewa::query()->where('status', 'aktif')
+            ->whereDate('tanggal_masuk', '<', $periode->copy()->addMonth()->toDateString())
+            ->where(fn (Builder $query) => $query->whereNull('tanggal_keluar')
+                ->orWhereDate('tanggal_keluar', '>', $periode->toDateString()));
+    }
+
+    private function hasMonthlyBill(Sewa $sewa, Carbon $periode): bool
+    {
+        return $sewa->pembayarans()
+            ->where('periode', '>=', $periode->toDateString())
+            ->where('periode', '<', $periode->copy()->addMonth()->toDateString())->exists();
+    }
+
     public function bulkBilling(Request $request)
     {
-        $bulan = $request->string('bulan')->toString();
-        if ($bulan === '') {
-            $bulan = Carbon::now()->format('Y-m');
-        }
-
-        $periode = Carbon::createFromFormat('Y-m', $bulan)->startOfMonth();
-
-        $sewas = Sewa::with('kamar', 'penghuni')
-            ->where('status', 'aktif')
-            ->get()
-            ->map(function (Sewa $sewa) use ($periode): array {
-                $sudahAda = $sewa->pembayarans()
-                    ->whereYear('periode', $periode->year)
-                    ->whereMonth('periode', $periode->month)
-                    ->exists();
-
-                return [
-                    'sewa' => $sewa,
-                    'sudah_ada' => $sudahAda,
-                ];
-            });
+        $periode = $this->billingPeriod($request);
+        $bulan = $periode->format('Y-m');
+        $sewas = $this->billableLeases($periode)->with('kamar', 'penghuni')->orderBy('id')->get()
+            ->map(fn (Sewa $sewa): array => [
+                'sewa' => $sewa,
+                'sudah_ada' => $this->hasMonthlyBill($sewa, $periode),
+            ]);
 
         return view('pembayarans.bulk-billing', compact('sewas', 'bulan', 'periode'));
     }
 
     public function storeBulkBilling(Request $request)
     {
-        $bulan = $request->string('bulan')->toString();
-        if ($bulan === '') {
-            $bulan = Carbon::now()->format('Y-m');
-        }
+        $periode = $this->billingPeriod($request);
+        $selection = $request->validate([
+            'pilih_sewa' => ['sometimes', 'boolean'],
+            'sewa_ids' => ['required_if:pilih_sewa,1', 'array', 'min:1', 'max:1000'],
+            'sewa_ids.*' => ['required', 'integer', 'distinct', 'exists:sewas,id'],
+        ]);
+        $ids = $selection['sewa_ids'] ?? null;
 
-        $periode = Carbon::createFromFormat('Y-m', $bulan)->startOfMonth();
-
-        $sewas = Sewa::with('penghuni', 'kamar')->where('status', 'aktif')->get();
-
-        $dibuat = 0;
-        $sudahAda = 0;
-
-        foreach ($sewas as $sewa) {
-            $exists = $sewa->pembayarans()
-                ->whereYear('periode', $periode->year)
-                ->whereMonth('periode', $periode->month)
-                ->exists();
-
-            if ($exists) {
-                $sudahAda++;
-
-                continue;
+        [$dibuat, $sudahAda] = DB::transaction(function () use ($periode, $ids): array {
+            // Lock the lease before checking/creating bills so repeated bulk requests serialize.
+            $query = $this->billableLeases($periode)->orderBy('id');
+            if ($ids !== null) {
+                $query->whereIn('id', $ids);
+            }
+            $sewas = $query->lockForUpdate()->get();
+            if ($ids !== null && $sewas->count() !== count($ids)) {
+                throw ValidationException::withMessages([
+                    'sewa_ids' => 'Pilihan sewa berubah atau tidak berlaku pada bulan ini. Muat ulang daftar sebelum membuat tagihan.',
+                ]);
             }
 
-            Pembayaran::create([
-                'sewa_id' => $sewa->id,
-                'periode' => $periode->toDateString(),
-                'jumlah' => $sewa->biaya_bulanan,
-                'metode' => 'cash',
-                'status' => 'belum_lunas',
-                'keterangan' => 'Tagihan bulk '.$periode->translatedFormat('F Y'),
-            ]);
+            $dibuat = 0;
+            $sudahAda = 0;
+            foreach ($sewas as $sewa) {
+                if ($this->hasMonthlyBill($sewa, $periode)) {
+                    $sudahAda++;
 
-            $dibuat++;
-        }
+                    continue;
+                }
+                Pembayaran::create([
+                    'sewa_id' => $sewa->id,
+                    'periode' => $periode->toDateString(),
+                    'jumlah' => $sewa->biaya_bulanan,
+                    'metode' => 'cash',
+                    'status' => 'belum_lunas',
+                    'keterangan' => 'Tagihan bulk '.$periode->translatedFormat('F Y'),
+                ]);
+                $dibuat++;
+            }
+
+            return [$dibuat, $sudahAda];
+        });
 
         $msg = "{$dibuat} tagihan berhasil dibuat untuk periode {$periode->translatedFormat('F Y')}.";
         if ($sudahAda > 0) {

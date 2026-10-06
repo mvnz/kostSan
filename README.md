@@ -54,3 +54,11 @@ npm run build
 PHPUnit memakai SQLite di memori dan data sintetis. Tes mencakup hak akses, keamanan link/dokumen, konflik sewa/reservasi, approval berulang, akhir bulan, ekspor, halaman utama, PDF kontrak, dan alur pendaftaran-pembayaran-approval. GitHub Actions menjalankan pemeriksaan dependency, migrasi database baru, suite tes, build, serta kompilasi route/view pada setiap PR dan perubahan `main`.
 
 **Status operasional penuh belum dinyatakan siap.** Rekonsiliasi pembayaran–invoice–buku keuangan, deduplikasi lintas jalur tagihan, dan persaingan transaksi pada database deployment masih memerlukan verifikasi lanjutan. Baca catatan terbaru dalam [`docs/reviews`](docs/reviews) sebelum melanjutkan pekerjaan. Tes tidak menghubungi layanan WhatsApp, memakai data penghuni asli, atau mengubah server/database produksi.
+
+## Tagihan massal pilihan
+
+Buka **Bulk Billing**, pilih bulan, lalu tampilkan daftar. Hanya sewa berstatus aktif dengan masa tinggal yang bertumpang tindih dengan bulan pilihan yang muncul; tanggal checkout tidak termasuk masa tinggal. Semua sewa yang belum memiliki tagihan dicentang awalnya. Hapus centang pada sewa yang hendak ditunda, lalu tekan **Buat Tagihan Pilihan**. Setidaknya satu sewa harus dipilih. Bila pilihan sudah tidak aktif/berubah periode, muat ulang daftar; seluruh batch ditolak tanpa membuat sebagian tagihan.
+
+Pengulangan bulk pada sewa dan bulan yang sama melewati tagihan yang sudah ada, termasuk tagihan manual pada tanggal lain di bulan tersebut. Nominal tetap `biaya_bulanan` penuh, tanpa prorata; pembayaran untuk beberapa bulan melalui link belum memiliki penanda cakupan yang dapat mencegah bulk pada bulan berikutnya. Karena itu periksa tagihan multi-bulan sebelum membuat batch berikutnya. Transaksi membatalkan seluruh batch beserta invoice baru bila penulisan gagal. Hak **Buat Data Sewa** diperlukan.
+
+Pembayaran berstatus **lunas** tidak dapat diubah atau dihapus, termasuk melalui request langsung. Pembayaran yang belum disetujui tetap dapat diedit. Belum ada alur reversal/refund otomatis: kebutuhan koreksi transaksi lunas perlu dicatat dan direkonsiliasi secara terpisah, bukan mengubah transaksi yang sudah disetujui.
