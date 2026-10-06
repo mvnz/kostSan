@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Model;
 
 class Sewa extends Model
 {
@@ -41,5 +41,21 @@ class Sewa extends Model
     public function pembayarans(): HasMany
     {
         return $this->hasMany(Pembayaran::class);
+    }
+
+    public function billingMonths(): int
+    {
+        if ($this->tanggal_masuk && $this->tanggal_keluar) {
+            // Preserve existing partial-period pricing; recognize exact calendar terms.
+            $months = ($this->tanggal_keluar->year - $this->tanggal_masuk->year) * 12
+                + $this->tanggal_keluar->month - $this->tanggal_masuk->month;
+            if ($months > 0 && $this->tanggal_masuk->copy()->addMonthsNoOverflow($months)->equalTo($this->tanggal_keluar)) {
+                return $months;
+            }
+
+            return max(1, (int) $this->tanggal_masuk->diffInMonths($this->tanggal_keluar));
+        }
+
+        return max(1, (int) ($this->penghuni?->lama_sewa_bulan ?? 1));
     }
 }

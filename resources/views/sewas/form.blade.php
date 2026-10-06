@@ -188,8 +188,10 @@ $pageTitle = $sewa->exists ? 'Edit Sewa' : 'Tambah Sewa';
         const base = baseKeluar || document.getElementById('tanggal_masuk').value;
         if (!base) return;
 
-        const d = new Date(base);
-        d.setMonth(d.getMonth() + bulan);
+        const [year, month, date] = base.split('-').map(Number);
+        const d = new Date(year, month - 1 + bulan, 1);
+        const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+        d.setDate(Math.min(date, lastDay));
         const y = d.getFullYear();
         const m = String(d.getMonth() + 1).padStart(2, '0');
         const day = String(d.getDate()).padStart(2, '0');
@@ -233,4 +235,3 @@ $pageTitle = $sewa->exists ? 'Edit Sewa' : 'Tambah Sewa';
     recalc();
 </script>
 @endsection
-

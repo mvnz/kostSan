@@ -63,6 +63,7 @@ class CheckMenuPermission
 
         // Pembayaran (bagian dari manajemen sewa)
         'pembayarans.index'                  => ['manajemen_sewa.data_sewa', 'view'],
+        'pembayarans.export'                 => ['manajemen_sewa.data_sewa', 'view'],
         'pembayarans.show'                   => ['manajemen_sewa.data_sewa', 'view'],
         'pembayarans.create'                 => ['manajemen_sewa.data_sewa', 'create'],
         'pembayarans.store'                  => ['manajemen_sewa.data_sewa', 'create'],

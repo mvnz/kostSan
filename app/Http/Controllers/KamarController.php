@@ -6,8 +6,12 @@ use App\Models\Kamar;
 use App\Models\KamarFloor;
 use App\Models\KamarTipeHarga;
 use App\Models\Sewa;
+use App\Services\RoomAvailability;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class KamarController extends Controller
 {
@@ -27,12 +31,12 @@ class KamarController extends Controller
         $floors = KamarFloor::orderBy('number')->get();
 
         $kamars = Kamar::with([
-            'sewas' => fn($q) => $q->with('penghuni')->latest(),
+            'sewas' => fn ($q) => $q->with('penghuni')->latest(),
         ])->orderBy('nomor')->get();
 
         $counts = [
-            'tersedia'  => $kamars->where('status', 'tersedia')->count(),
-            'terisi'    => $kamars->where('status', 'terisi')->count(),
+            'tersedia' => $kamars->where('status', 'tersedia')->count(),
+            'terisi' => $kamars->where('status', 'terisi')->count(),
             'reservasi' => $kamars->where('status', 'reservasi')->count(),
             'perbaikan' => $kamars->where('status', 'perbaikan')->count(),
         ];
@@ -47,7 +51,7 @@ class KamarController extends Controller
         $tipeHargas = KamarTipeHarga::orderBy('tipe')->get();
 
         return view('kamars.form', [
-            'kamar' => new Kamar(),
+            'kamar' => new Kamar,
             'floors' => $floors,
             'tipeHargas' => $tipeHargas,
         ]);
@@ -87,7 +91,7 @@ class KamarController extends Controller
     public function update(Request $request, Kamar $kamar)
     {
         $validated = $request->validate([
-            'nomor' => ['required', 'string', 'max:30', 'unique:kamars,nomor,' . $kamar->id],
+            'nomor' => ['required', 'string', 'max:30', 'unique:kamars,nomor,'.$kamar->id],
             'tipe' => ['required', 'string', 'max:100', Rule::exists('kamar_tipe_hargas', 'tipe')],
             'status' => ['required', 'in:tersedia,terisi,perbaikan'],
             'layout_floor' => ['required', 'integer', Rule::exists('kamar_floors', 'number')],
@@ -96,14 +100,13 @@ class KamarController extends Controller
 
         $validated['harga_bulanan'] = KamarTipeHarga::where('tipe', $validated['tipe'])->value('harga_1_bulan') ?? 0;
 
-        $kamar->update($validated);
-
-        // If kamar is set to tersedia, close any active sewas for it
-        if ($validated['status'] === 'tersedia') {
-            \App\Models\Sewa::where('kamar_id', $kamar->id)
-                ->where('status', 'aktif')
-                ->update(['status' => 'selesai']);
-        }
+        DB::transaction(function () use ($validated, $kamar): void {
+            $kamar = Kamar::whereKey($kamar->id)->lockForUpdate()->firstOrFail();
+            if ($validated['status'] === 'tersedia' && $kamar->sewas()->whereIn('status', ['aktif', 'menunggak'])->exists()) {
+                throw ValidationException::withMessages(['status' => 'Kamar masih memiliki sewa aktif atau menunggak. Selesaikan sewa melalui Manajemen Sewa terlebih dahulu.']);
+            }
+            $kamar->update($validated);
+        });
 
         return redirect()->route('kamars.index')->with('success', 'Data kamar berhasil diperbarui.');
     }
@@ -116,26 +119,36 @@ class KamarController extends Controller
 
         $kamar->update(['status' => 'tersedia']);
 
-        return redirect()->route('kamars.sewa')->with('success', 'Sewa kamar ' . $kamar->nomor . ' telah diselesaikan.');
+        return redirect()->route('kamars.sewa')->with('success', 'Sewa kamar '.$kamar->nomor.' telah diselesaikan.');
     }
 
     public function perpanjangSewa(Request $request, Kamar $kamar)
     {
         $request->validate([
             'tanggal_keluar' => ['required', 'date'],
-            'biaya_bulanan'  => ['nullable', 'numeric', 'min:0'],
+            'biaya_bulanan' => ['nullable', 'numeric', 'min:0'],
         ]);
 
-        $data = ['tanggal_keluar' => $request->tanggal_keluar];
-        if ($request->filled('biaya_bulanan')) {
-            $data['biaya_bulanan'] = $request->biaya_bulanan;
-        }
+        DB::transaction(function () use ($request, $kamar): void {
+            $kamar = Kamar::whereKey($kamar->id)->lockForUpdate()->firstOrFail();
+            $sewas = Sewa::where('kamar_id', $kamar->id)->where('status', 'aktif')->lockForUpdate()->get();
+            if ($sewas->count() !== 1) {
+                throw ValidationException::withMessages(['tanggal_keluar' => 'Perpanjangan membutuhkan tepat satu sewa aktif. Periksa Data Sewa.']);
+            }
+            $sewa = $sewas->first();
+            $newEnd = Carbon::parse($request->tanggal_keluar);
+            if ($newEnd->lessThanOrEqualTo($sewa->tanggal_keluar ?? $sewa->tanggal_masuk)) {
+                throw ValidationException::withMessages(['tanggal_keluar' => 'Tanggal perpanjangan harus setelah tanggal akhir sewa sebelumnya.']);
+            }
+            app(RoomAvailability::class)->assertAvailable($kamar, $sewa->tanggal_masuk->toDateString(), $newEnd->toDateString(), exceptLease: $sewa->id, resident: $sewa->penghuni_id);
+            $data = ['tanggal_keluar' => $newEnd->toDateString()];
+            if ($request->filled('biaya_bulanan')) {
+                $data['biaya_bulanan'] = $request->biaya_bulanan;
+            }
+            $sewa->update($data);
+        });
 
-        Sewa::where('kamar_id', $kamar->id)
-            ->where('status', 'aktif')
-            ->update($data);
-
-        return redirect()->route('kamars.sewa')->with('success', 'Sewa kamar ' . $kamar->nomor . ' berhasil diperpanjang.');
+        return redirect()->route('kamars.sewa')->with('success', 'Sewa kamar '.$kamar->nomor.' berhasil diperpanjang.');
     }
 
     public function updateLayout(Request $request, Kamar $kamar)

@@ -1,58 +1,56 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# kostSan
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Aplikasi Laravel untuk operasional kos: kamar, penghuni, reservasi, sewa, pembayaran dan approval, invoice, keuangan, laporan, dokumen privat, hak akses, dan log aktivitas.
 
-## About Laravel
+## Instalasi lokal
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+Persyaratan: PHP 8.3+, Composer 2, Node.js 22+, dan SQLite atau database yang didukung Laravel. Aktifkan ekstensi PHP yang diperiksa oleh `composer check-platform-reqs`, termasuk PDO SQLite untuk tes.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
-
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
-
-```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+```sh
+composer install
+cp .env.example .env
+php artisan key:generate
+# Untuk instalasi lokal SQLite baru:
+touch database/database.sqlite
+php artisan migrate
+php artisan kost:admin-create email-anda@example.com --name="Nama Anda"
+npm ci --ignore-scripts
+npm run build
+php artisan serve
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+`kost:admin-create` meminta password dan konfirmasi melalui input tersembunyi; minimal 12 karakter dengan huruf dan angka. Email yang sudah ada tidak diubah. Seeder tidak lagi membuat akun dengan password bawaan. Akun lama tetap tersimpan; bila instalasi sebelumnya memakai akun bawaan, ganti password melalui Profil Akun sebelum membuka akses. `role_id` kosong berarti superadmin sesuai mekanisme hak akses proyek.
 
-## Contributing
+Sesuaikan `.env` dengan database masing-masing. Jangan menjalankan migrasi atau seeder dari lingkungan tes ke database operasional. Pada deployment, gunakan HTTPS, `APP_DEBUG=false`, key aplikasi unik, serta cadangan database dan berkas. Dokumen sensitif disimpan di `storage/app/private`; endpoint dokumen memeriksa izin lihat modul terkait.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Aturan sewa dan reservasi
 
-## Code of Conduct
+- Tanggal keluar adalah tanggal checkout: rentang berlaku dari tanggal masuk sampai sebelum tanggal keluar. Checkout dan check-in berikutnya boleh pada tanggal yang sama.
+- Sewa aktif atau menunggak dan reservasi dikonfirmasi memblokir periode yang bertumpang tindih. Tanggal akhir kosong memblokir seluruh periode setelah tanggal mulai. Reservasi menunggu/dibatalkan dan sewa selesai tidak memblokir kamar.
+- Reservasi yang dikonfirmasi untuk penghuni yang sama boleh dikonversi melalui Data Sewa. Link publik menciptakan penghuni baru sehingga tetap ditolak bila kamar telah dialokasikan.
+- Membuat/mengedit sewa, pendaftaran publik, approval, dan perpanjangan tidak boleh menutup sewa penghuni lain. Kamar perbaikan tidak menerima sewa baru. Master Kamar tidak boleh mengosongkan kamar yang masih memiliki sewa; gunakan tindakan Selesai Sewa.
+- Perpanjangan memerlukan tepat satu sewa aktif dan tanggal akhir yang lebih maju, dengan pengecekan reservasi lain.
+- Approval pembayaran dapat diulang tanpa mengirim notifikasi kedua atau membuka kembali sewa yang selesai. Notifikasi dijalankan setelah transaksi database selesai.
+- Pendaftaran menghitung bulan kalender tanpa melewati akhir bulan. Contoh 31 Januari + 3 bulan menjadi 30 April, dengan tagihan 3 bulan. Periode pecahan dan tanggal historis yang tidak tepat bulan kalender mempertahankan hitungan lama (minimal 1 bulan); belum tersedia prorata harian. Harga tier dan pembulatan nominal Rp50.000 dari konfigurasi lama tetap digunakan.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Ekspor pembayaran untuk rekonsiliasi
 
-## Security Vulnerabilities
+Buka **Pembayaran**, pilih **Bulan periode** dan/atau **Status pembayaran**, lalu tekan **Terapkan** dan **Export CSV**. Ringkasan dan CSV mengikuti kedua filter ini. Pencarian pada tabel hanya mengubah tampilan, bukan isi ekspor.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+CSV berisi ID pembayaran, nomor kamar, nama penghuni, periode, tanggal bayar, metode, nominal, dan status. Nominal tidak memakai pemisah ribuan sehingga mudah dijumlahkan. CSV menggunakan UTF-8 dan input yang berpotensi menjadi formula spreadsheet diberi awalan apostrof. Hak **Lihat Data Sewa** diperlukan; ekspor tidak mengirim pesan ke penghuni dan tidak mengubah transaksi. Status `belum_lunas` mencakup tagihan yang belum dibayar maupun pembayaran yang belum disetujui sesuai model saat ini.
 
-## License
+## Pengujian dan kelanjutan review
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+```sh
+composer validate --strict
+composer check-platform-reqs
+composer audit --locked
+PAO_DISABLE=1 vendor/bin/phpunit --fail-on-warning --fail-on-risky
+npm test
+npm ci --ignore-scripts
+npm run build
+```
+
+PHPUnit memakai SQLite di memori dan data sintetis. Tes mencakup hak akses, keamanan link/dokumen, konflik sewa/reservasi, approval berulang, akhir bulan, ekspor, halaman utama, PDF kontrak, dan alur pendaftaran-pembayaran-approval. GitHub Actions menjalankan pemeriksaan dependency, migrasi database baru, suite tes, build, serta kompilasi route/view pada setiap PR dan perubahan `main`.
+
+**Status operasional penuh belum dinyatakan siap.** Rekonsiliasi pembayaran–invoice–buku keuangan, deduplikasi lintas jalur tagihan, dan persaingan transaksi pada database deployment masih memerlukan verifikasi lanjutan. Baca catatan terbaru dalam [`docs/reviews`](docs/reviews) sebelum melanjutkan pekerjaan. Tes tidak menghubungi layanan WhatsApp, memakai data penghuni asli, atau mengubah server/database produksi.

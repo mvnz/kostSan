@@ -2,27 +2,81 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Kamar;
 use App\Models\Pembayaran;
 use App\Models\Sewa;
+use App\Services\RoomAvailability;
 use App\Services\WhatsAppService;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class PembayaranController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $pembayarans = Pembayaran::with('sewa.kamar', 'sewa.penghuni')->latest('periode')->get();
+        $pembayarans = $this->filteredPayments($request)->latest('periode')->get();
 
         return view('pembayarans.index', compact('pembayarans'));
+    }
+
+    private function filteredPayments(Request $request): Builder
+    {
+        $filters = $request->validate([
+            'bulan' => ['nullable', 'date_format:Y-m'],
+            'status' => ['nullable', 'in:lunas,belum_lunas'],
+        ]);
+        $query = Pembayaran::with('sewa.kamar', 'sewa.penghuni');
+        if (! empty($filters['bulan'])) {
+            $period = Carbon::createFromFormat('!Y-m', $filters['bulan']);
+            $query->where('periode', '>=', $period->toDateString())
+                ->where('periode', '<', $period->copy()->addMonth()->toDateString());
+        }
+        if (! empty($filters['status'])) {
+            $query->where('status', $filters['status']);
+        }
+
+        return $query;
+    }
+
+    public function export(Request $request)
+    {
+        $query = $this->filteredPayments($request);
+
+        return response()->streamDownload(function () use ($query): void {
+            $output = fopen('php://output', 'w');
+            fwrite($output, "\xEF\xBB\xBF");
+            fputcsv($output, ['ID', 'Kamar', 'Penghuni', 'Periode', 'Tanggal Bayar', 'Metode', 'Jumlah', 'Status'], ',', '"', '');
+            $query->chunkById(200, function ($payments) use ($output): void {
+                foreach ($payments as $payment) {
+                    $row = [
+                        $payment->id,
+                        $payment->sewa?->kamar?->nomor ?? '-',
+                        $payment->sewa?->penghuni?->nama ?? '-',
+                        $payment->periode?->toDateString() ?? '',
+                        $payment->tanggal_bayar?->toDateString() ?? '',
+                        $payment->metode,
+                        $payment->jumlah,
+                        $payment->status,
+                    ];
+                    // Prevent spreadsheet software from evaluating user input as formulas.
+                    $row = array_map(fn ($value) => preg_match('/^[\s]*[=+@-]/u', (string) $value) ? "'".$value : $value, $row);
+                    fputcsv($output, $row, ',', '"', '');
+                }
+            });
+            fclose($output);
+        }, 'pembayaran-'.now()->format('Ymd-His').'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Cache-Control' => 'no-store, private',
+        ]);
     }
 
     public function create()
     {
         return view('pembayarans.form', [
-            'pembayaran' => new Pembayaran(),
+            'pembayaran' => new Pembayaran,
             'sewas' => Sewa::with('kamar', 'penghuni')->orderByDesc('tanggal_masuk')->get(),
         ]);
     }
@@ -102,28 +156,29 @@ class PembayaranController extends Controller
 
     public function approve(Pembayaran $pembayaran)
     {
-        DB::transaction(function () use ($pembayaran): void {
-            $pembayaran->loadMissing('sewa.kamar', 'sewa.penghuni');
-
-            if ($pembayaran->status !== 'lunas') {
-                $pembayaran->update([
-                    'status' => 'lunas',
-                    'tanggal_bayar' => $pembayaran->tanggal_bayar ?? now()->toDateString(),
-                    'keterangan' => trim(($pembayaran->keterangan ?? '') . ' [Approved admin]'),
-                ]);
+        $approved = DB::transaction(function () use ($pembayaran): bool {
+            $kamar = Kamar::whereKey($pembayaran->sewa->kamar_id)->lockForUpdate()->firstOrFail();
+            $payment = Pembayaran::whereKey($pembayaran->id)->lockForUpdate()->firstOrFail();
+            if ($payment->status === 'lunas') {
+                return false;
             }
-
-            $sewa = $pembayaran->sewa;
-            if ($sewa) {
-                Sewa::where('kamar_id', $sewa->kamar_id)
-                    ->where('id', '!=', $sewa->id)
-                    ->where('status', 'aktif')
-                    ->update(['status' => 'selesai']);
-
+            $sewa = Sewa::whereKey($payment->sewa_id)->lockForUpdate()->firstOrFail();
+            if ($sewa->status !== 'selesai') {
+                app(RoomAvailability::class)->assertAvailable($kamar, $sewa->tanggal_masuk->toDateString(), $sewa->tanggal_keluar?->toDateString(), exceptLease: $sewa->id, resident: $sewa->penghuni_id);
                 $sewa->update(['status' => 'aktif']);
-                $sewa->kamar?->update(['status' => 'terisi']);
+                $kamar->update(['status' => 'terisi']);
             }
+            $payment->update([
+                'status' => 'lunas',
+                'tanggal_bayar' => $payment->tanggal_bayar ?? now()->toDateString(),
+                'keterangan' => trim(($payment->keterangan ?? '').' [Approved admin]'),
+            ]);
 
+            return true;
+        });
+
+        if ($approved) {
+            $pembayaran->refresh()->load('sewa.penghuni');
             if (filled($pembayaran->sewa?->penghuni?->telepon)) {
                 $jumlah = number_format((float) $pembayaran->jumlah, 0, ',', '.');
                 app(WhatsAppService::class)->sendByType(
@@ -138,9 +193,9 @@ class PembayaranController extends Controller
                     "Halo {$pembayaran->sewa->penghuni->nama}, pembayaran kos periode {$pembayaran->periode?->format('m-Y')} sebesar Rp {$jumlah} telah disetujui pemilik dan dicatat dengan status {$pembayaran->status}."
                 );
             }
-        });
+        }
 
-        return back()->with('success', 'Pembayaran disetujui. Status sewa aktif dan kamar sudah terisi.');
+        return back()->with('success', $approved ? 'Pembayaran disetujui. Sewa yang sudah selesai tetap selesai.' : 'Pembayaran ini sudah disetujui sebelumnya.');
     }
 
     public function bulkBilling(Request $request)
@@ -160,8 +215,9 @@ class PembayaranController extends Controller
                     ->whereYear('periode', $periode->year)
                     ->whereMonth('periode', $periode->month)
                     ->exists();
+
                 return [
-                    'sewa'      => $sewa,
+                    'sewa' => $sewa,
                     'sudah_ada' => $sudahAda,
                 ];
             });
@@ -191,16 +247,17 @@ class PembayaranController extends Controller
 
             if ($exists) {
                 $sudahAda++;
+
                 continue;
             }
 
             Pembayaran::create([
-                'sewa_id'  => $sewa->id,
-                'periode'  => $periode->toDateString(),
-                'jumlah'   => $sewa->biaya_bulanan,
-                'metode'   => 'cash',
-                'status'   => 'belum_lunas',
-                'keterangan' => 'Tagihan bulk ' . $periode->translatedFormat('F Y'),
+                'sewa_id' => $sewa->id,
+                'periode' => $periode->toDateString(),
+                'jumlah' => $sewa->biaya_bulanan,
+                'metode' => 'cash',
+                'status' => 'belum_lunas',
+                'keterangan' => 'Tagihan bulk '.$periode->translatedFormat('F Y'),
             ]);
 
             $dibuat++;

@@ -68,7 +68,7 @@
                         <small class="text-body-secondary d-block" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;font-weight:600">Durasi</small>
                         <strong>
                             @if($sewa->tanggal_masuk && $sewa->tanggal_keluar)
-                                {{ $sewa->tanggal_masuk->diffInMonths($sewa->tanggal_keluar) }} Bulan
+                                {{ $bulan }} Bulan
                             @else
                                 -
                             @endif

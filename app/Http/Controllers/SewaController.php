@@ -7,9 +7,11 @@ use App\Models\KostProfile;
 use App\Models\Pembayaran;
 use App\Models\Penghuni;
 use App\Models\Sewa;
+use App\Services\RoomAvailability;
 use App\Services\WhatsAppService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class SewaController extends Controller
@@ -26,11 +28,12 @@ class SewaController extends Controller
     {
         $kamars = Kamar::orderBy('nomor')->get();
         $counts = [
-            'tersedia'  => $kamars->where('status', 'tersedia')->count(),
-            'terisi'    => $kamars->where('status', 'terisi')->count(),
+            'tersedia' => $kamars->where('status', 'tersedia')->count(),
+            'terisi' => $kamars->where('status', 'terisi')->count(),
             'reservasi' => $kamars->where('status', 'reservasi')->count(),
             'perbaikan' => $kamars->where('status', 'perbaikan')->count(),
         ];
+
         return view('sewas.pilih-kamar', compact('kamars', 'counts'));
     }
 
@@ -42,13 +45,13 @@ class SewaController extends Controller
         $biayaTambahan = 0;
 
         return view('sewas.form', [
-            'sewa'            => new Sewa(),
-            'kamars'          => $kamars,
-            'penghunis'       => Penghuni::orderBy('nama')->get(),
+            'sewa' => new Sewa,
+            'kamars' => $kamars,
+            'penghunis' => Penghuni::orderBy('nama')->get(),
             'selectedKamarId' => $selectedKamarId,
-            'selectedHarga'   => $selectedHarga,
-            'biayaTambahan'   => $biayaTambahan,
-            'lamaSewa'        => 1,
+            'selectedHarga' => $selectedHarga,
+            'biayaTambahan' => $biayaTambahan,
+            'lamaSewa' => 1,
         ]);
     }
 
@@ -58,7 +61,7 @@ class SewaController extends Controller
             'kamar_id' => ['required', 'exists:kamars,id'],
             'penghuni_id' => ['required', 'exists:penghunis,id'],
             'tanggal_masuk' => ['required', 'date'],
-            'tanggal_keluar' => ['nullable', 'date', 'after_or_equal:tanggal_masuk'],
+            'tanggal_keluar' => ['nullable', 'date', 'after:tanggal_masuk'],
             'biaya_bulanan' => ['required', 'numeric', 'min:0'],
             'uang_jaminan' => ['nullable', 'numeric', 'min:0'],
             'cara_pembayaran' => ['nullable', 'string', 'max:100'],
@@ -67,24 +70,22 @@ class SewaController extends Controller
             'catatan' => ['nullable', 'string'],
         ]);
 
-        if ($request->hasFile('bukti_pembayaran')) {
-            $validated['bukti_pembayaran'] = $request->file('bukti_pembayaran')->store('bukti-sewa', 'local');
-        }
+        $sewa = DB::transaction(function () use ($validated, $request) {
+            $kamar = Kamar::whereKey($validated['kamar_id'])->lockForUpdate()->firstOrFail();
+            if ($validated['status'] !== 'selesai') {
+                app(RoomAvailability::class)->assertAvailable($kamar, $validated['tanggal_masuk'], $validated['tanggal_keluar'] ?? null, resident: (int) $validated['penghuni_id']);
+            }
+            if ($request->hasFile('bukti_pembayaran')) {
+                $validated['bukti_pembayaran'] = $request->file('bukti_pembayaran')->store('bukti-sewa', 'local');
+            }
+            $sewa = Sewa::create($validated);
+            $this->syncKamarStatus($sewa->kamar_id);
 
-        $sewa = Sewa::create($validated);
-
-        // If this sewa is aktif, end other active sewas for the same kamar
-        if ($validated['status'] === 'aktif') {
-            Sewa::where('kamar_id', $sewa->kamar_id)
-                ->where('id', '!=', $sewa->id)
-                ->where('status', 'aktif')
-                ->update(['status' => 'selesai']);
-        }
-
-        $this->syncKamarStatus($sewa->kamar_id);
+            return $sewa;
+        });
 
         $sewa->loadMissing(['penghuni', 'kamar']);
-        if (filled($sewa->penghuni?->telepon)) {
+        if ($sewa->status === 'aktif' && filled($sewa->penghuni?->telepon)) {
             app(WhatsAppService::class)->sendByType(
                 'sewa_aktif',
                 (string) $sewa->penghuni->telepon,
@@ -103,13 +104,12 @@ class SewaController extends Controller
     public function show(Sewa $sewa)
     {
         $sewa->load(['kamar', 'penghuni', 'pembayarans']);
-        $nama    = $sewa->penghuni->nama ?? 'Unknown';
-        $parts   = explode(' ', trim($nama));
-        $inisial = strtoupper(mb_substr($parts[0], 0, 1)) . (isset($parts[1]) ? strtoupper(mb_substr($parts[1], 0, 1)) : '');
-        $bulan   = ($sewa->tanggal_masuk && $sewa->tanggal_keluar)
-            ? max(1, $sewa->tanggal_masuk->diffInMonths($sewa->tanggal_keluar))
-            : 1;
-        $total   = (float) $sewa->biaya_bulanan * $bulan;
+        $nama = $sewa->penghuni->nama ?? 'Unknown';
+        $parts = explode(' ', trim($nama));
+        $inisial = strtoupper(mb_substr($parts[0], 0, 1)).(isset($parts[1]) ? strtoupper(mb_substr($parts[1], 0, 1)) : '');
+        $bulan = $sewa->billingMonths();
+        $total = (float) $sewa->biaya_bulanan * $bulan;
+
         return view('sewas.show', compact('sewa', 'inisial', 'bulan', 'total'));
     }
 
@@ -122,17 +122,17 @@ class SewaController extends Controller
 
         $lamaSewa = 1;
         if ($sewa->tanggal_masuk && $sewa->tanggal_keluar) {
-            $lamaSewa = max(1, min(12, (int) $sewa->tanggal_masuk->diffInMonths($sewa->tanggal_keluar)));
+            $lamaSewa = min(12, $sewa->billingMonths());
         }
 
         return view('sewas.form', [
-            'sewa'            => $sewa,
-            'kamars'          => $kamars,
-            'penghunis'       => Penghuni::orderBy('nama')->get(),
+            'sewa' => $sewa,
+            'kamars' => $kamars,
+            'penghunis' => Penghuni::orderBy('nama')->get(),
             'selectedKamarId' => $selectedKamarId,
-            'selectedHarga'   => $selectedHarga,
-            'biayaTambahan'   => $biayaTambahan,
-            'lamaSewa'        => $lamaSewa,
+            'selectedHarga' => $selectedHarga,
+            'biayaTambahan' => $biayaTambahan,
+            'lamaSewa' => $lamaSewa,
         ]);
     }
 
@@ -142,7 +142,7 @@ class SewaController extends Controller
             'kamar_id' => ['required', 'exists:kamars,id'],
             'penghuni_id' => ['required', 'exists:penghunis,id'],
             'tanggal_masuk' => ['required', 'date'],
-            'tanggal_keluar' => ['nullable', 'date', 'after_or_equal:tanggal_masuk'],
+            'tanggal_keluar' => ['nullable', 'date', 'after:tanggal_masuk'],
             'biaya_bulanan' => ['required', 'numeric', 'min:0'],
             'uang_jaminan' => ['nullable', 'numeric', 'min:0'],
             'cara_pembayaran' => ['nullable', 'string', 'max:100'],
@@ -151,21 +151,28 @@ class SewaController extends Controller
             'catatan' => ['nullable', 'string'],
         ]);
 
-        if ($request->hasFile('bukti_pembayaran')) {
-            // Delete old file if exists
-            if ($sewa->bukti_pembayaran) {
-                Storage::disk('local')->delete($sewa->bukti_pembayaran);
+        DB::transaction(function () use ($validated, $request, $sewa): void {
+            $rooms = Kamar::whereIn('id', [$sewa->kamar_id, $validated['kamar_id']])->orderBy('id')->lockForUpdate()->get();
+            $sewa = Sewa::whereKey($sewa->id)->lockForUpdate()->firstOrFail();
+            $kamar = $rooms->firstWhere('id', $validated['kamar_id']);
+            abort_unless($kamar, 404);
+            if ($validated['status'] !== 'selesai') {
+                app(RoomAvailability::class)->assertAvailable($kamar, $validated['tanggal_masuk'], $validated['tanggal_keluar'] ?? null, exceptLease: $sewa->id, resident: (int) $validated['penghuni_id']);
             }
-            $validated['bukti_pembayaran'] = $request->file('bukti_pembayaran')->store('bukti-sewa', 'local');
-        } else {
-            unset($validated['bukti_pembayaran']);
-        }
-
-        $oldKamarId = $sewa->kamar_id;
-        $sewa->update($validated);
-
-        $this->syncKamarStatus($oldKamarId);
-        $this->syncKamarStatus($sewa->kamar_id);
+            if ($request->hasFile('bukti_pembayaran')) {
+                $validated['bukti_pembayaran'] = $request->file('bukti_pembayaran')->store('bukti-sewa', 'local');
+            } else {
+                unset($validated['bukti_pembayaran']);
+            }
+            $oldKamarId = $sewa->kamar_id;
+            $oldProof = $sewa->bukti_pembayaran;
+            $sewa->update($validated);
+            $this->syncKamarStatus($oldKamarId);
+            $this->syncKamarStatus($sewa->kamar_id);
+            if ($request->hasFile('bukti_pembayaran') && $oldProof) {
+                DB::afterCommit(fn () => Storage::disk('local')->delete($oldProof));
+            }
+        });
 
         return redirect()->route('sewas.index')->with('success', 'Data sewa berhasil diperbarui.');
     }

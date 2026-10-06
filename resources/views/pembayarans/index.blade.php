@@ -112,12 +112,33 @@
             <small class="text-body-secondary">Kelola pembayaran periodik penghuni.</small>
         </div>
         <div class="d-flex gap-2">
-            <button class="btn btn-outline-secondary"><i class="bx bx-export me-1"></i>Export</button>
+            <a href="{{ route('pembayarans.export', request()->only(['bulan', 'status'])) }}" class="btn btn-outline-secondary"><i class="bx bx-export me-1"></i>Export CSV</a>
             @canMenu('manajemen_sewa.data_sewa', 'create')
             <a href="{{ route('pembayarans.bulk-billing') }}" class="btn btn-outline-primary"><i class="bx bx-receipt me-1"></i>Bulk Billing</a>
             <a href="{{ route('pembayarans.create') }}" class="btn btn-primary"><i class="bx bx-plus me-1"></i>Tambah Pembayaran</a>
             @endCanMenu
         </div>
+    </div>
+    <div class="card-body border-bottom">
+        <form method="GET" action="{{ route('pembayarans.index') }}" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label for="payment-month" class="form-label">Bulan periode</label>
+                <input id="payment-month" type="month" name="bulan" value="{{ request('bulan') }}" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <label for="payment-status" class="form-label">Status pembayaran</label>
+                <select id="payment-status" name="status" class="form-select">
+                    <option value="">Semua status</option>
+                    <option value="belum_lunas" @selected(request('status') === 'belum_lunas')>Belum lunas</option>
+                    <option value="lunas" @selected(request('status') === 'lunas')>Lunas</option>
+                </select>
+            </div>
+            <div class="col-md-4 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Terapkan</button>
+                <a href="{{ route('pembayarans.index') }}" class="btn btn-outline-secondary">Reset</a>
+            </div>
+        </form>
+        <small class="text-body-secondary d-block mt-2">Ringkasan dan Export CSV mengikuti filter bulan dan status. Pencarian tabel hanya memfilter tampilan.</small>
     </div>
     <div class="card-datatable table-responsive">
         <table class="table datatable" id="tbl-pembayaran" data-mobile-cols="2,4,5,6">
@@ -201,4 +222,3 @@
     </div>
 </div>
 @endsection
-

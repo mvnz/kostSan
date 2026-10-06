@@ -7,6 +7,7 @@ use App\Models\Penghuni;
 use App\Models\PenghuniRegistrationLink;
 use App\Models\Sewa;
 use App\Models\SewaPaymentLink;
+use App\Services\RoomAvailability;
 use App\Services\WhatsAppService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -21,9 +22,9 @@ class PenghuniRegistrationController extends Controller
             'kamar_id' => ['nullable', 'exists:kamars,id'],
         ]);
 
-        if (!empty($validated['kamar_id'])) {
+        if (! empty($validated['kamar_id'])) {
             $kamar = Kamar::find($validated['kamar_id']);
-            if (!$kamar || $kamar->status !== 'tersedia') {
+            if (! $kamar || $kamar->status !== 'tersedia') {
                 return back()->with('error', 'Link pendaftaran hanya bisa dibuat untuk kamar yang tersedia.');
             }
         }
@@ -34,7 +35,7 @@ class PenghuniRegistrationController extends Controller
             'expires_at' => now()->addDays(7),
         ]);
 
-        $redirectRoute = !empty($validated['kamar_id']) ? 'kamars.sewa' : 'penghunis.index';
+        $redirectRoute = ! empty($validated['kamar_id']) ? 'kamars.sewa' : 'penghunis.index';
 
         return redirect()
             ->route($redirectRoute)
@@ -46,12 +47,12 @@ class PenghuniRegistrationController extends Controller
     {
         $link = PenghuniRegistrationLink::with('kamar')->where('token', $token)->first();
 
-        if (!$link || $link->isExpired()) {
+        if (! $link || $link->isExpired()) {
             return view('penghuni-registrations.expired');
         }
 
         return view('penghuni-registrations.form', [
-            'penghuni' => new Penghuni(),
+            'penghuni' => new Penghuni,
             'token' => $token,
             'link' => $link,
         ]);
@@ -87,15 +88,12 @@ class PenghuniRegistrationController extends Controller
         $created = DB::transaction(function () use ($token, $validated, $request) {
             $link = PenghuniRegistrationLink::with('kamar')->where('token', $token)->lockForUpdate()->first();
 
-            if (!$link || $link->isExpired()) {
+            if (! $link || $link->isExpired()) {
                 return null;
             }
 
-            $validated['foto_ktp_path'] = $request->file('foto_ktp')->store('penghuni-dokumen/ktp', 'local');
-            $validated['foto_selfie_path'] = $request->file('foto_selfie')->store('penghuni-dokumen/selfie', 'local');
-
-            $kamar = $link->kamar;
-            if ($kamar === null && !empty($validated['nomor_kamar'])) {
+            $kamar = $link->kamar_id ? Kamar::whereKey($link->kamar_id)->lockForUpdate()->firstOrFail() : null;
+            if ($kamar === null && ! empty($validated['nomor_kamar'])) {
                 $kamar = Kamar::where('nomor', trim((string) $validated['nomor_kamar']))->lockForUpdate()->first();
             }
 
@@ -105,12 +103,19 @@ class PenghuniRegistrationController extends Controller
             }
 
             $lamaBulan = max(1, (int) ($validated['waktu_sewa_bulan'] ?? 1));
-            $tanggalMasukForMeta = !empty($validated['tanggal_mulai_tinggal'])
+            $tanggalMasukForMeta = ! empty($validated['tanggal_mulai_tinggal'])
                 ? Carbon::parse($validated['tanggal_mulai_tinggal'])
                 : Carbon::today();
 
             $validated['lama_sewa_bulan'] = $lamaBulan;
-            $validated['tanggal_jatuh_tempo'] = (clone $tanggalMasukForMeta)->addMonths($lamaBulan)->toDateString();
+            $validated['tanggal_jatuh_tempo'] = (clone $tanggalMasukForMeta)->addMonthsNoOverflow($lamaBulan)->toDateString();
+
+            if ($kamar) {
+                app(RoomAvailability::class)->assertAvailable($kamar, $tanggalMasukForMeta->toDateString(), $validated['tanggal_jatuh_tempo']);
+            }
+
+            $validated['foto_ktp_path'] = $request->file('foto_ktp')->store('penghuni-dokumen/ktp', 'local');
+            $validated['foto_selfie_path'] = $request->file('foto_selfie')->store('penghuni-dokumen/selfie', 'local');
 
             unset($validated['waktu_sewa_bulan']);
 
@@ -119,11 +124,7 @@ class PenghuniRegistrationController extends Controller
 
             if ($kamar) {
                 $tanggalMasuk = $tanggalMasukForMeta->copy();
-                $tanggalKeluar = (clone $tanggalMasuk)->addMonths($lamaBulan);
-
-                Sewa::where('kamar_id', $kamar->id)
-                    ->where('status', 'aktif')
-                    ->update(['status' => 'selesai']);
+                $tanggalKeluar = (clone $tanggalMasuk)->addMonthsNoOverflow($lamaBulan);
 
                 $sewa = Sewa::create([
                     'kamar_id' => $kamar->id,
@@ -153,7 +154,7 @@ class PenghuniRegistrationController extends Controller
             ];
         });
 
-        if (!$created) {
+        if (! $created) {
             return view('penghuni-registrations.expired');
         }
 

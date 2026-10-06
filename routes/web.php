@@ -178,6 +178,7 @@ Route::get('sewas/pilih-kamar', function () {
 })->name('sewas.pilih-kamar');
 Route::resource('sewas', SewaController::class);
 Route::post('sewas/payment-links', [SewaPaymentRegistrationController::class, 'generate'])->name('sewa-payment-registrations.generate');
+Route::get('pembayarans/export', [PembayaranController::class, 'export'])->name('pembayarans.export');
 Route::resource('pembayarans', PembayaranController::class);
 Route::post('pembayarans/{pembayaran}/approve', [PembayaranController::class, 'approve'])->name('pembayarans.approve');
 Route::get('pembayarans-bulk', [PembayaranController::class, 'bulkBilling'])->name('pembayarans.bulk-billing');

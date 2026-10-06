@@ -92,11 +92,7 @@ class SewaPaymentRegistrationController extends Controller
     private function calculateBilling(Sewa $sewa): array
     {
         $biayaBulanan = (float) ($sewa->biaya_bulanan ?? 0);
-        $durasiBulan = max(1, (int) ($sewa->penghuni?->lama_sewa_bulan ?? 1));
-
-        if ($sewa->tanggal_masuk && $sewa->tanggal_keluar) {
-            $durasiBulan = max(1, (int) $sewa->tanggal_masuk->diffInMonths($sewa->tanggal_keluar));
-        }
+        $durasiBulan = $sewa->billingMonths();
 
         $profile = KostProfile::query()->first();
 

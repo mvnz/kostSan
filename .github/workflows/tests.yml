@@ -1,0 +1,49 @@
+name: Application checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, dom, xml, xmlwriter, sqlite3, pdo_sqlite, fileinfo, curl, zip
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Validate and install PHP dependencies
+        run: |
+          composer validate --strict
+          composer install --no-interaction --prefer-dist
+          composer check-platform-reqs
+          composer audit --locked
+      - name: Set up isolated application database
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+          php artisan migrate --force
+      - name: Backend regression and HTTP smoke tests
+        env:
+          PAO_DISABLE: '1'
+        run: vendor/bin/phpunit --fail-on-warning --fail-on-risky
+      - name: Frontend build
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test
+          npm run build
+      - name: Compile routes and views
+        run: |
+          php artisan route:cache
+          php artisan view:cache
