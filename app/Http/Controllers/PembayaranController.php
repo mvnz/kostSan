@@ -26,8 +26,10 @@ class PembayaranController extends Controller
     private function filteredPayments(Request $request): Builder
     {
         $filters = $request->validate([
+            'q' => ['nullable', 'string', 'max:100'],
             'bulan' => ['nullable', 'date_format:Y-m'],
             'status' => ['nullable', 'in:lunas,belum_lunas'],
+            'metode' => ['nullable', 'in:cash,transfer,e-wallet'],
         ]);
         $query = Pembayaran::with('sewa.kamar', 'sewa.penghuni');
         if (! empty($filters['bulan'])) {
@@ -37,6 +39,20 @@ class PembayaranController extends Controller
         }
         if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
+        }
+        if (! empty($filters['metode'])) {
+            $query->where('metode', $filters['metode']);
+        }
+        $search = trim($filters['q'] ?? '');
+        if ($search !== '') {
+            // Search literal text: SQL wildcard characters must not broaden results.
+            $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
+            $query->whereHas('sewa', function (Builder $leases) use ($pattern): void {
+                $leases->where(function (Builder $matches) use ($pattern): void {
+                    $matches->whereHas('penghuni', fn (Builder $residents) => $residents->whereRaw("nama LIKE ? ESCAPE '!'", [$pattern]))
+                        ->orWhereHas('kamar', fn (Builder $rooms) => $rooms->whereRaw("nomor LIKE ? ESCAPE '!'", [$pattern]));
+                });
+            });
         }
 
         return $query;
