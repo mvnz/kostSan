@@ -62,3 +62,9 @@ Buka **Bulk Billing**, pilih bulan, lalu tampilkan daftar. Hanya sewa berstatus 
 Pengulangan bulk pada sewa dan bulan yang sama melewati tagihan yang sudah ada, termasuk tagihan manual pada tanggal lain di bulan tersebut. Nominal tetap `biaya_bulanan` penuh, tanpa prorata; pembayaran untuk beberapa bulan melalui link belum memiliki penanda cakupan yang dapat mencegah bulk pada bulan berikutnya. Karena itu periksa tagihan multi-bulan sebelum membuat batch berikutnya. Transaksi membatalkan seluruh batch beserta invoice baru bila penulisan gagal. Hak **Buat Data Sewa** diperlukan.
 
 Pembayaran berstatus **lunas** tidak dapat diubah atau dihapus, termasuk melalui request langsung. Pembayaran yang belum disetujui tetap dapat diedit. Belum ada alur reversal/refund otomatis: kebutuhan koreksi transaksi lunas perlu dicatat dan direkonsiliasi secara terpisah, bukan mengubah transaksi yang sudah disetujui.
+
+## Keterlacakan invoice otomatis
+
+Setiap pembayaran baru memiliki paling banyak satu invoice otomatis melalui relasi `payment_id`. Daftar **Invoice** menampilkan nomor pembayaran dan kamar asal agar operator dapat menelusuri nominal serta statusnya. Invoice otomatis mengikuti perubahan pembayaran dan tidak dapat diedit atau dihapus secara terpisah; lakukan koreksi pada pembayaran yang belum disetujui. Menghapus pembayaran belum lunas turut menghapus hanya invoice otomatis miliknya. Invoice manual tetap berdiri sendiri dan tidak ditimpa pembayaran pada penghuni/periode yang sama.
+
+Migrasi `2026_10_07_230500_add_payment_id_to_invoices_table` menghubungkan invoice lama berlabel `AUTO:` hanya jika tepat satu pembayaran cocok berdasarkan penghuni dan periode. Data yang ambigu sengaja dibiarkan sebagai **manual/legacy** agar migrasi tidak menebak kepemilikan transaksi. Periksa invoice manual/legacy setelah deployment dan rekonsiliasikan secara administratif; jangan mengubah histori pembayaran lunas. Belum tersedia reversal/refund otomatis.

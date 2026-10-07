@@ -64,6 +64,11 @@ $pageTitle = 'Invoice';
                             <div>
                                 <strong>{{ $invoice->nomor_invoice }}</strong>
                                 <small class="d-block text-body-secondary">{{ $nama }}</small>
+                                @if($invoice->payment_id)
+                                    <small class="d-block text-primary">Pembayaran #{{ $invoice->payment_id }} · Kamar {{ $invoice->payment?->sewa?->kamar?->nomor ?? '-' }}</small>
+                                @else
+                                    <small class="d-block text-body-secondary">Invoice manual/legacy</small>
+                                @endif
                             </div>
                         </div>
                     </td>
@@ -73,8 +78,8 @@ $pageTitle = 'Invoice';
                     <td>
                         @if($invoice->status === 'lunas')
                             <span class="badge rounded-pill bg-label-success">Lunas</span>
-                        @elseif($invoice->status === 'dikirim')
-                            <span class="badge rounded-pill bg-label-primary">Dikirim</span>
+                        @elseif($invoice->status === 'terkirim')
+                            <span class="badge rounded-pill bg-label-primary">Terkirim</span>
                         @else
                             <span class="badge rounded-pill bg-label-secondary">{{ ucfirst($invoice->status) }}</span>
                         @endif
@@ -85,15 +90,19 @@ $pageTitle = 'Invoice';
                                 <i class="icon-base bx bx-detail me-1"></i>Detail
                             </a>
                             @canMenu('keuangan.invoice', 'update')
+                            @if(!$invoice->payment_id)
                             <a href="{{ route('invoices.edit', $invoice) }}" class="btn btn-sm btn-edit-fancy">
                                 <i class="icon-base bx bx-edit-alt me-1"></i>Edit
                             </a>
+                            @endif
                             @endCanMenu
                             @canMenu('keuangan.invoice', 'delete')
+                            @if(!$invoice->payment_id)
                             <form method="POST" action="{{ route('invoices.destroy', $invoice) }}" onsubmit="return confirm('Hapus invoice ini?')" class="d-inline">
                                 @csrf @method('DELETE')
                                 <button type="submit" class="btn btn-sm btn-action-danger"><i class="icon-base bx bx-trash me-1"></i>Delete</button>
                             </form>
+                            @endif
                             @endCanMenu
                         </div>
                     </td>
@@ -104,4 +113,3 @@ $pageTitle = 'Invoice';
     </div>
 </div>
 @endsection
-

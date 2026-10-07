@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Invoice extends Model
 {
     protected $fillable = [
+        'payment_id',
         'penghuni_id',
         'nomor_invoice',
         'periode',
@@ -28,5 +29,10 @@ class Invoice extends Model
     public function penghuni(): BelongsTo
     {
         return $this->belongsTo(Penghuni::class);
+    }
+
+    public function payment(): BelongsTo
+    {
+        return $this->belongsTo(Pembayaran::class, 'payment_id');
     }
 }

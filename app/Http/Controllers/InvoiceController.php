@@ -7,12 +7,13 @@ use App\Models\Pembayaran;
 use App\Models\Penghuni;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class InvoiceController extends Controller
 {
     public function index()
     {
-        $invoices = Invoice::with('penghuni')->latest()->get();
+        $invoices = Invoice::with('penghuni', 'payment.sewa.kamar')->latest()->get();
 
         return view('invoices.index', compact('invoices'));
     }
@@ -20,7 +21,7 @@ class InvoiceController extends Controller
     public function create()
     {
         return view('invoices.form', [
-            'invoice' => new Invoice(),
+            'invoice' => new Invoice,
             'penghunis' => Penghuni::orderBy('nama')->get(),
         ]);
     }
@@ -36,7 +37,7 @@ class InvoiceController extends Controller
             'keterangan' => ['nullable', 'string'],
         ]);
 
-        $validated['nomor_invoice'] = 'INV-KOS-' . now()->format('YmdHis') . '-' . Str::upper(Str::random(4));
+        $validated['nomor_invoice'] = 'INV-KOS-'.now()->format('YmdHis').'-'.Str::upper(Str::random(4));
         if ($validated['status'] === 'terkirim') {
             $validated['tanggal_kirim'] = now();
         }
@@ -61,6 +62,7 @@ class InvoiceController extends Controller
 
     public function update(Request $request, Invoice $invoice)
     {
+        $this->assertManuallyManaged($invoice);
         $validated = $request->validate([
             'penghuni_id' => ['required', 'exists:penghunis,id'],
             'periode' => ['required', 'date'],
@@ -81,6 +83,7 @@ class InvoiceController extends Controller
 
     public function destroy(Invoice $invoice)
     {
+        $this->assertManuallyManaged($invoice);
         $invoice->delete();
 
         return redirect()->route('invoices.index')->with('success', 'Invoice berhasil dihapus.');
@@ -100,38 +103,14 @@ class InvoiceController extends Controller
     {
         $created = 0;
 
-        Pembayaran::with('sewa')
+        Pembayaran::with('sewa', 'invoice')
             ->where('status', 'lunas')
             ->orderBy('id')
             ->chunkById(200, function ($pembayarans) use (&$created) {
                 foreach ($pembayarans as $pembayaran) {
-                    $penghuniId = $pembayaran->sewa?->penghuni_id;
-                    $periode = $pembayaran->periode?->toDateString();
-
-                    if (!$penghuniId || !$periode) {
-                        continue;
-                    }
-
-                    $exists = Invoice::query()
-                        ->where('penghuni_id', $penghuniId)
-                        ->whereDate('periode', $periode)
-                        ->exists();
-
-                    if ($exists) {
-                        continue;
-                    }
-
-                    Invoice::create([
-                        'penghuni_id' => $penghuniId,
-                        'nomor_invoice' => 'INV-KOS-' . now()->format('YmdHis') . '-' . Str::upper(Str::random(4)),
-                        'periode' => $periode,
-                        'jatuh_tempo' => $pembayaran->tanggal_bayar ?? $pembayaran->periode,
-                        'jumlah_tagihan' => $pembayaran->jumlah,
-                        'status' => 'lunas',
-                        'keterangan' => 'AUTO: refresh dari data pembayaran lunas',
-                    ]);
-
-                    $created++;
+                    $hadInvoice = $pembayaran->invoice !== null;
+                    $pembayaran->syncInvoiceFromPayment();
+                    $created += $hadInvoice ? 0 : 1;
                 }
             });
 
@@ -140,5 +119,14 @@ class InvoiceController extends Controller
             : 'Refresh selesai. Tidak ada invoice yang perlu dibuat.';
 
         return redirect()->route('invoices.index')->with('success', $message);
+    }
+
+    private function assertManuallyManaged(Invoice $invoice): void
+    {
+        if ($invoice->payment_id !== null) {
+            throw ValidationException::withMessages([
+                'invoice' => 'Invoice otomatis mengikuti pembayaran asal dan tidak dapat diubah atau dihapus secara terpisah.',
+            ]);
+        }
     }
 }

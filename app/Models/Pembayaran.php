@@ -2,8 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 class Pembayaran extends Model
@@ -37,6 +38,11 @@ class Pembayaran extends Model
         return $this->belongsTo(Sewa::class);
     }
 
+    public function invoice(): HasOne
+    {
+        return $this->hasOne(Invoice::class, 'payment_id');
+    }
+
     public function syncInvoiceFromPayment(): void
     {
         $this->loadMissing('sewa.kamar', 'sewa.penghuni');
@@ -44,37 +50,28 @@ class Pembayaran extends Model
         $penghuniId = $this->sewa?->penghuni_id;
         $periode = $this->periode?->toDateString();
 
-        if (!$penghuniId || !$periode) {
+        if (! $penghuniId || ! $periode) {
             return;
         }
 
         $kamarNomor = $this->sewa?->kamar?->nomor ?? '-';
-        $keterangan = 'AUTO: invoice dari pembayaran sewa kamar ' . $kamarNomor;
+        $keterangan = 'AUTO: invoice dari pembayaran sewa kamar '.$kamarNomor;
 
-        $invoice = Invoice::query()
-            ->where('penghuni_id', $penghuniId)
-            ->whereDate('periode', $periode)
-            ->first();
-
-        if ($invoice === null) {
-            Invoice::create([
-                'penghuni_id' => $penghuniId,
-                'nomor_invoice' => 'INV-KOS-' . now()->format('YmdHis') . '-' . Str::upper(Str::random(4)),
-                'periode' => $periode,
-                'jatuh_tempo' => $this->tanggal_bayar ?? $this->periode,
-                'jumlah_tagihan' => $this->jumlah,
-                'status' => $this->status === 'lunas' ? 'lunas' : 'draft',
-                'keterangan' => $keterangan,
-            ]);
-
-            return;
-        }
-
-        $invoice->update([
+        $invoice = Invoice::firstOrNew(['payment_id' => $this->id]);
+        $invoice->fill([
+            'penghuni_id' => $penghuniId,
             'jatuh_tempo' => $this->tanggal_bayar ?? $this->periode,
+            'periode' => $periode,
             'jumlah_tagihan' => $this->jumlah,
-            'status' => $this->status === 'lunas' ? 'lunas' : $invoice->status,
             'keterangan' => $keterangan,
         ]);
+        if (! $invoice->exists) {
+            $invoice->nomor_invoice = 'INV-KOS-'.now()->format('YmdHis').'-'.Str::upper(Str::random(4));
+            $invoice->status = 'draft';
+        }
+        if ($this->status === 'lunas') {
+            $invoice->status = 'lunas';
+        }
+        $invoice->save();
     }
 }
