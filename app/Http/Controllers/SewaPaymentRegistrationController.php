@@ -6,11 +6,13 @@ use App\Models\KostProfile;
 use App\Models\Pembayaran;
 use App\Models\Sewa;
 use App\Models\SewaPaymentLink;
+use App\Services\BillingCoverage;
 use App\Services\PrivateUpload;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class SewaPaymentRegistrationController extends Controller
 {
@@ -66,8 +68,20 @@ class SewaPaymentRegistrationController extends Controller
                     return false;
                 }
 
-                $link->loadMissing('sewa.penghuni');
-                $billing = $this->calculateBilling($link->sewa);
+                $lease = Sewa::whereKey($link->sewa_id)->lockForUpdate()->firstOrFail();
+                $link->setRelation('sewa', $lease);
+                $lease->loadMissing('penghuni');
+                $billing = $this->calculateBilling($lease);
+                $start = $lease->tanggal_masuk->copy();
+                $end = $lease->tanggal_keluar?->copy() ?? $start->copy()->addMonthsNoOverflow($billing['durasi_bulan']);
+                if ($end->lessThanOrEqualTo($start)) {
+                    throw ValidationException::withMessages(['metode' => 'Masa sewa tidak valid. Hubungi pengelola sebelum membuat pembayaran.']);
+                }
+                if (app(BillingCoverage::class)->overlaps($lease, $start, $end)) {
+                    throw ValidationException::withMessages(['metode' => 'Sudah ada tagihan yang mencakup masa sewa ini. Hubungi pengelola untuk menggunakan tagihan yang ada; pembayaran baru tidak dibuat.']);
+                }
+                $validated['coverage_start'] = $start->toDateString();
+                $validated['coverage_end'] = $end->toDateString();
 
                 $validated['sewa_id'] = $link->sewa_id;
                 $validated['periode'] = now()->toDateString();

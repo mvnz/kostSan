@@ -6,6 +6,7 @@ use App\Models\Kamar;
 use App\Models\Keuangan;
 use App\Models\Pembayaran;
 use App\Models\Sewa;
+use App\Services\BillingCoverage;
 use App\Services\PrivateUpload;
 use App\Services\RoomAvailability;
 use App\Services\WhatsAppService;
@@ -165,6 +166,9 @@ class PembayaranController extends Controller
             DB::transaction(function () use ($request, $pembayaran, $validated, &$replacement, &$committed): void {
                 $payment = Pembayaran::whereKey($pembayaran->id)->lockForUpdate()->firstOrFail();
                 $this->assertPaymentEditable($payment);
+                if ($payment->coverage_start && ((int) $validated['sewa_id'] !== $payment->sewa_id || $validated['periode'] !== $payment->periode->toDateString())) {
+                    throw ValidationException::withMessages(['periode' => 'Tagihan dengan cakupan masa sewa tidak dapat dipindahkan ke sewa/periode lain. Hapus tagihan pending lalu buat ulang agar cakupan tetap benar.']);
+                }
                 $validated['status'] = 'belum_lunas';
 
                 if ($request->hasFile('bukti_pembayaran')) {
@@ -294,9 +298,7 @@ class PembayaranController extends Controller
 
     private function hasMonthlyBill(Sewa $sewa, Carbon $periode): bool
     {
-        return $sewa->pembayarans()
-            ->where('periode', '>=', $periode->toDateString())
-            ->where('periode', '<', $periode->copy()->addMonth()->toDateString())->exists();
+        return app(BillingCoverage::class)->overlaps($sewa, $periode, $periode->copy()->addMonth());
     }
 
     public function bulkBilling(Request $request)

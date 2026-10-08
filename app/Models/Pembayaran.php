@@ -11,6 +11,8 @@ class Pembayaran extends Model
 {
     protected $fillable = [
         'sewa_id',
+        'coverage_start',
+        'coverage_end',
         'periode',
         'tanggal_bayar',
         'metode',
@@ -22,6 +24,8 @@ class Pembayaran extends Model
 
     protected $casts = [
         'periode' => 'date',
+        'coverage_start' => 'date',
+        'coverage_end' => 'date',
         'tanggal_bayar' => 'date',
         'jumlah' => 'decimal:2',
     ];

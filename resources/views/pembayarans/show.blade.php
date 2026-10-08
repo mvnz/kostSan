@@ -6,6 +6,7 @@
 <dt class="col-sm-3">Penghuni</dt><dd class="col-sm-9 text-break">{{ $pembayaran->sewa?->penghuni?->nama ?? '-' }}</dd>
 <dt class="col-sm-3">Kamar</dt><dd class="col-sm-9">{{ $pembayaran->sewa?->kamar?->nomor ?? '-' }}</dd>
 <dt class="col-sm-3">Periode</dt><dd class="col-sm-9">{{ $pembayaran->periode?->format('m/Y') }}</dd>
+@if($pembayaran->coverage_start)<dt class="col-sm-3">Masa yang ditagih</dt><dd class="col-sm-9">{{ $pembayaran->coverage_start->format('d/m/Y') }} sampai sebelum {{ $pembayaran->coverage_end?->format('d/m/Y') }}</dd>@endif
 <dt class="col-sm-3">Tanggal bayar</dt><dd class="col-sm-9">{{ $pembayaran->tanggal_bayar?->format('d/m/Y') ?? 'Belum tercatat' }}</dd>
 <dt class="col-sm-3">Metode</dt><dd class="col-sm-9">{{ $pembayaran->metode }}</dd>
 <dt class="col-sm-3">Jumlah</dt><dd class="col-sm-9">Rp {{ number_format((float) $pembayaran->jumlah, 2, ',', '.') }}</dd>

@@ -60,7 +60,7 @@ PHPUnit memakai SQLite di memori dan data sintetis. Tes mencakup hak akses, keam
 
 Buka **Bulk Billing**, pilih bulan, lalu tampilkan daftar. Hanya sewa berstatus aktif dengan masa tinggal yang bertumpang tindih dengan bulan pilihan yang muncul; tanggal checkout tidak termasuk masa tinggal. Semua sewa yang belum memiliki tagihan dicentang awalnya. Hapus centang pada sewa yang hendak ditunda, lalu tekan **Buat Tagihan Pilihan**. Setidaknya satu sewa harus dipilih. Bila pilihan sudah tidak aktif/berubah periode, muat ulang daftar; seluruh batch ditolak tanpa membuat sebagian tagihan.
 
-Pengulangan bulk pada sewa dan bulan yang sama melewati tagihan yang sudah ada, termasuk tagihan manual pada tanggal lain di bulan tersebut. Nominal tetap `biaya_bulanan` penuh, tanpa prorata; pembayaran untuk beberapa bulan melalui link belum memiliki penanda cakupan yang dapat mencegah bulk pada bulan berikutnya. Karena itu periksa tagihan multi-bulan sebelum membuat batch berikutnya. Transaksi membatalkan seluruh batch beserta invoice baru bila penulisan gagal. Hak **Buat Data Sewa** diperlukan.
+Pengulangan bulk pada sewa dan bulan yang sama melewati tagihan yang sudah ada, termasuk tagihan manual pada tanggal lain di bulan tersebut. Nominal tetap `biaya_bulanan` penuh, tanpa prorata; Pembayaran baru melalui link sekarang menyimpan cakupan masa sewa dan mencegah bulk pada bulan yang bertumpang tindih. Pembayaran historis tanpa cakupan masih perlu diperiksa karena nominal tidak cukup untuk menebak masa yang telah ditagih. Transaksi membatalkan seluruh batch beserta invoice baru bila penulisan gagal. Hak **Buat Data Sewa** diperlukan.
 
 Pembayaran berstatus **lunas** tidak dapat diubah atau dihapus, termasuk melalui request langsung. Pembayaran yang belum disetujui tetap dapat diedit. Belum ada alur reversal/refund otomatis: kebutuhan koreksi transaksi lunas perlu dicatat dan direkonsiliasi secara terpisah, bukan mengubah transaksi yang sudah disetujui.
 
@@ -98,4 +98,10 @@ Pendaftaran/pembayaran melalui link publik sekarang membersihkan unggahan baru b
 
 Detail Invoice dan Pembayaran sekarang dapat dibaca dengan hak Lihat masing-masing modul tanpa diarahkan ke halaman Edit. Tautan sumber lintas modul mengikuti izin; transaksi lunas/invoice otomatis tidak menawarkan edit terpisah. Laporan Keuangan HTML/PDF memvalidasi bulan dan tetap tepat saat tanggal sistem 31. Laporan Hunian menghitung kamar unik dengan sewa aktif pada sebagian bulan, mengecualikan tanggal checkout, dan memvalidasi tahun; rata-rata harian serta histori sewa selesai belum dicakup.
 
-Checkpoint kelanjutan terbaru: [9 Oktober — pengembangan malam](docs/reviews/2026-10-09-night-checkpoint.md). Baca ini sebelum mengulang backlog.
+Checkpoint kelanjutan terbaru: [9 Oktober — cakupan tagihan multi-bulan](docs/reviews/2026-10-09-billing-coverage.md). Baca ini sebelum mengulang backlog.
+
+## Cakupan pembayaran lewat link
+
+Pembayaran baru melalui link menyimpan awal/akhir masa yang ditagih sebagai snapshot. Detail Pembayaran menampilkan **Masa yang ditagih**; tanggal akhir eksklusif. Bulk Billing menganggap semua bulan yang bertumpang tindih sudah ditagih, termasuk pembayaran yang masih menunggu approval. Link lain untuk sewa tersebut tidak membuat tagihan kedua bila cakupan bertumpang tindih atau sudah ada tagihan bulanan pada masa tersebut. Token yang ditolak tetap belum digunakan; hubungi pengelola untuk memakai tagihan yang sudah ada.
+
+Sewa/periode pembayaran pending dengan snapshot tidak boleh dipindahkan melalui Edit; hapus pending dan buat ulang bila sumbernya perlu dikoreksi. Perpanjangan sewa tidak memperluas cakupan tagihan lama, sehingga bulan sesudah akhir cakupan dapat ditagih. Alur link belum menghitung hanya sisa term setelah perpanjangan: gunakan tagihan bulanan untuk sisa masa, jangan mengirim link seluruh term yang bertumpang tindih. Pembayaran lama tidak di-backfill; periode satu bulan tetap menjadi fallback. Deduplikasi manual dan dukungan cicilan masih memerlukan desain/validasi terpisah.
