@@ -12,6 +12,9 @@ $pageTitle = 'Keuangan';
     </div>
 </div>
 
+@canMenu('manajemen_sewa.data_sewa', 'view')
+<a href="{{ route('keuangans.reconciliation') }}" class="btn btn-outline-primary mb-3">Rekonsiliasi Pembayaran–Keuangan</a>
+@endCanMenu
 <div class="row g-3 mb-4">
     <div class="col-md-3 col-6">
         <div class="card h-100">

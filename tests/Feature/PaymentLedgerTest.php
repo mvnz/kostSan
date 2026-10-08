@@ -141,4 +141,17 @@ class PaymentLedgerTest extends TestCase
         $this->assertSame('belum_lunas', $payment->fresh()->status);
         $this->assertDatabaseCount('keuangans', 0);
     }
+
+    public function test_finance_view_only_user_can_open_manual_and_automatic_details(): void
+    {
+        $manual = Keuangan::create(['tanggal' => '2026-10-09', 'jenis' => 'pengeluaran', 'kategori' => 'Internet', 'deskripsi' => '<script>alert(1)</script>', 'jumlah' => 230000]);
+        $payment = $this->payment();
+        $this->post('/pembayarans/'.$payment->id.'/approve')->assertRedirect();
+        $automatic = Keuangan::where('payment_id', $payment->id)->firstOrFail();
+        $role = Role::create(['name' => 'Finance viewer', 'menu_permissions' => ['keuangan.data_keuangan' => ['view']]]);
+        $this->actingAs(User::factory()->create(['role_id' => $role->id]));
+        $this->get('/keuangans/'.$manual->id)->assertOk()->assertSee('Internet')->assertDontSee('<script>alert(1)</script>', false)->assertDontSee('/keuangans/'.$manual->id.'/edit', false);
+        $this->get('/keuangans/'.$automatic->id)->assertOk()->assertSee('Sumber otomatis')->assertDontSee('/pembayarans/'.$payment->id, false);
+        $this->getJson('/keuangans/'.$manual->id.'/edit')->assertForbidden();
+    }
 }

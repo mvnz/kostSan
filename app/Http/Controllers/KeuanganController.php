@@ -3,8 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Keuangan;
+use App\Models\Pembayaran;
 use Carbon\Carbon;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
@@ -39,6 +42,47 @@ class KeuanganController extends Controller
         ));
     }
 
+    public function reconciliation(Request $request)
+    {
+        abort_unless($request->user()->hasMenuPermission('manajemen_sewa.data_sewa', 'view'), 403);
+        $filters = $request->validate([
+            'kategori' => ['nullable', 'in:tanpa_pemasukan,tidak_sesuai'],
+            'bulan' => ['nullable', 'date_format:Y-m'],
+        ]);
+        $kategori = $filters['kategori'] ?? 'tanpa_pemasukan';
+        $bulan = $filters['bulan'] ?? null;
+        $missing = Pembayaran::query()->where('status', 'lunas')->whereDoesntHave('ledgerEntry');
+        $mismatch = Pembayaran::query()->whereHas('ledgerEntry', function ($entries): void {
+            $entries->where(function ($differences): void {
+                $differences->whereColumn('keuangans.jumlah', '<>', 'pembayarans.jumlah')
+                    ->orWhere('keuangans.jenis', '<>', 'pemasukan')
+                    ->orWhere('keuangans.kategori', '<>', 'Sewa Kamar')
+                    ->orWhere('pembayarans.status', '<>', 'lunas')
+                    ->orWhereNull('pembayarans.tanggal_bayar')
+                    ->orWhereColumn('keuangans.tanggal', '<>', 'pembayarans.tanggal_bayar');
+            });
+        });
+        if ($bulan) {
+            $start = CarbonImmutable::createFromFormat('!Y-m', $bulan)->startOfMonth();
+            $end = $start->addMonth()->toDateString();
+            $start = $start->toDateString();
+            $paymentMonth = function ($payments) use ($start, $end): void {
+                $payments->where(fn ($dated) => $dated->where('tanggal_bayar', '>=', $start)->where('tanggal_bayar', '<', $end))
+                    ->orWhere(fn ($undated) => $undated->whereNull('tanggal_bayar')->where('periode', '>=', $start)->where('periode', '<', $end));
+            };
+            $missing->where($paymentMonth);
+            $mismatch->where(function ($affected) use ($paymentMonth, $start, $end): void {
+                $affected->where($paymentMonth)->orWhereHas('ledgerEntry', fn ($entries) => $entries->where('tanggal', '>=', $start)->where('tanggal', '<', $end));
+            });
+        }
+        $counts = ['tanpa_pemasukan' => (clone $missing)->count(), 'tidak_sesuai' => (clone $mismatch)->count()];
+        $records = ($kategori === 'tidak_sesuai' ? $mismatch : $missing)
+            ->with('sewa.penghuni', 'sewa.kamar', 'ledgerEntry')->orderBy('id')->paginate(25)->withQueryString();
+
+        return response()->view('keuangans.reconciliation', compact('kategori', 'bulan', 'counts', 'records'))
+            ->header('Cache-Control', 'no-store, private');
+    }
+
     public function create()
     {
         return view('keuangans.form', [
@@ -62,14 +106,24 @@ class KeuanganController extends Controller
             $validated['bukti_path'] = $request->file('bukti')->store('bukti-keuangan', 'local');
         }
 
-        Keuangan::create($validated);
+        try {
+            DB::transaction(fn () => Keuangan::create($validated));
+        } catch (\Throwable $exception) {
+            if (! empty($validated['bukti_path'])) {
+                Storage::disk('local')->delete($validated['bukti_path']);
+            }
+            throw $exception;
+        }
 
         return redirect()->route('keuangans.index')->with('success', 'Transaksi keuangan berhasil ditambahkan.');
     }
 
     public function show(Keuangan $keuangan)
     {
-        return redirect()->route('keuangans.edit', $keuangan);
+        $keuangan->load('payment');
+
+        return response()->view('keuangans.show', compact('keuangan'))
+            ->header('Cache-Control', 'no-store, private');
     }
 
     public function edit(Keuangan $keuangan)
@@ -91,7 +145,6 @@ class KeuanganController extends Controller
     public function update(Request $request, Keuangan $keuangan)
     {
         $this->assertManuallyManaged($keuangan);
-
         $validated = $request->validate([
             'tanggal' => ['required', 'date'],
             'jenis' => ['required', 'in:pemasukan,pengeluaran'],
@@ -102,20 +155,34 @@ class KeuanganController extends Controller
             'hapus_bukti' => ['nullable', 'boolean'],
         ]);
 
-        if ($request->boolean('hapus_bukti') && $keuangan->bukti_path) {
-            Storage::disk('local')->delete($keuangan->bukti_path);
-            $validated['bukti_path'] = null;
-        }
-
-        if ($request->hasFile('bukti')) {
-            if ($keuangan->bukti_path) {
-                Storage::disk('local')->delete($keuangan->bukti_path);
+        $replacement = null;
+        $committed = false;
+        try {
+            DB::transaction(function () use ($request, $keuangan, $validated, &$replacement, &$committed): void {
+                $entry = Keuangan::whereKey($keuangan->id)->lockForUpdate()->firstOrFail();
+                $this->assertManuallyManaged($entry);
+                $oldProof = $entry->bukti_path;
+                if ($request->boolean('hapus_bukti')) {
+                    $validated['bukti_path'] = null;
+                }
+                if ($request->hasFile('bukti')) {
+                    $replacement = $request->file('bukti')->store('bukti-keuangan', 'local');
+                    $validated['bukti_path'] = $replacement;
+                }
+                $entry->update($validated);
+                DB::afterCommit(function () use ($oldProof, $validated, &$committed): void {
+                    $committed = true;
+                    if ($oldProof && array_key_exists('bukti_path', $validated) && $oldProof !== $validated['bukti_path']) {
+                        Storage::disk('local')->delete($oldProof);
+                    }
+                });
+            });
+        } catch (\Throwable $exception) {
+            if ($replacement && ! $committed) {
+                Storage::disk('local')->delete($replacement);
             }
-
-            $validated['bukti_path'] = $request->file('bukti')->store('bukti-keuangan', 'local');
+            throw $exception;
         }
-
-        $keuangan->update($validated);
 
         return redirect()->route('keuangans.index')->with('success', 'Transaksi keuangan berhasil diperbarui.');
     }
@@ -123,12 +190,15 @@ class KeuanganController extends Controller
     public function destroy(Keuangan $keuangan)
     {
         $this->assertManuallyManaged($keuangan);
-
-        if ($keuangan->bukti_path) {
-            Storage::disk('local')->delete($keuangan->bukti_path);
-        }
-
-        $keuangan->delete();
+        DB::transaction(function () use ($keuangan): void {
+            $entry = Keuangan::whereKey($keuangan->id)->lockForUpdate()->firstOrFail();
+            $this->assertManuallyManaged($entry);
+            $oldProof = $entry->bukti_path;
+            $entry->delete();
+            if ($oldProof) {
+                DB::afterCommit(fn () => Storage::disk('local')->delete($oldProof));
+            }
+        });
 
         return redirect()->route('keuangans.index')->with('success', 'Transaksi keuangan berhasil dihapus.');
     }

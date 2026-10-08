@@ -80,3 +80,11 @@ Pembuatan pembayaran manual dan invoice sekarang dilakukan dalam satu transaksi.
 Saat pemilik menekan **Approve** pada pembayaran, status pembayaran, invoice, status sewa/kamar, dan satu pemasukan **Sewa Kamar** kini disimpan dalam transaksi database yang sama. Pemasukan menampilkan ID pembayaran asal dan masuk ke ringkasan serta laporan Keuangan berdasarkan tanggal bayar. Pengulangan approval tidak membuat pemasukan kedua. Jika pencatatan Keuangan gagal, seluruh approval dibatalkan sehingga pembayaran dan invoice tidak menjadi lunas sebagian.
 
 Pemasukan otomatis tidak dapat diedit atau dihapus dari menu Keuangan; lakukan penelusuran melalui tombol **Pembayaran**. Transaksi Keuangan manual tetap dapat dibuat dan dikelola seperti sebelumnya, tetapi request manual tidak dapat mengaku sebagai sumber pembayaran. Migrasi menambahkan hubungan unik nullable dan tidak menebak hubungan pencatatan lama. Karena itu pembayaran yang sudah lunas sebelum fitur ini serta pemasukan manual terdahulu tetap perlu direkonsiliasi secara administratif agar tidak dibuat ganda. Reversal/refund otomatis belum tersedia.
+
+## Rekonsiliasi pembayaran–Keuangan dan detail transaksi
+
+Buka **Keuangan → Rekonsiliasi Pembayaran–Keuangan**. Dibutuhkan hak **Lihat Keuangan** dan **Lihat Data Sewa**. Kategori pertama memuat pembayaran lunas tanpa sumber pemasukan terhubung; kategori kedua memuat perbedaan nominal, tanggal, jenis, kategori, atau status asal. Filter mengikuti tanggal bayar, dengan periode sebagai fallback bila tanggal bayar kosong; tanggal pemasukan berbeda turut masuk pada kedua bulan terdampak. Pagination berisi 25 baris dan mempertahankan filter.
+
+Laporan hanya membaca data. Pembayaran lama mungkin sudah dicatat manual: cocokkan bukti sebelum melakukan koreksi agar tidak membuat pemasukan ganda. Laporan tidak menebak relasi atau melakukan backfill. Detail Keuangan dapat dibaca tanpa izin edit; bukti tetap melalui endpoint privat, dan tautan pembayaran asal mengikuti izin Data Sewa.
+
+Bukti Keuangan manual kini dipertahankan jika perubahan/penghapusan database gagal. Unggahan pengganti yang gagal disimpan dibersihkan; bukti lama dibersihkan setelah commit berhasil. Kegagalan penyimpanan berkas setelah commit tetap membutuhkan pemantauan administratif.

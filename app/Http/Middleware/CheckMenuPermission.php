@@ -82,6 +82,7 @@ class CheckMenuPermission
         'reservasis.destroy'                 => ['manajemen_sewa.data_sewa', 'delete'],
 
         // Keuangan
+        'keuangans.reconciliation'           => ['keuangan.data_keuangan', 'view'],
         'keuangans.index'                    => ['keuangan.data_keuangan', 'view'],
         'keuangans.show'                     => ['keuangan.data_keuangan', 'view'],
         'keuangans.create'                   => ['keuangan.data_keuangan', 'create'],
