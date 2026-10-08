@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\AccessLanding;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -24,7 +25,8 @@ class AuthController extends Controller
 
         if (Auth::attempt($credentials, $request->boolean('remember'))) {
             $request->session()->regenerate();
-            return redirect()->intended('/');
+            $landing = app(AccessLanding::class)->routeName($request->user()) ?? 'profile.show';
+            return redirect()->intended(route($landing));
         }
 
         return back()->withErrors([

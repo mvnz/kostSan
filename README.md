@@ -98,10 +98,14 @@ Pendaftaran/pembayaran melalui link publik sekarang membersihkan unggahan baru b
 
 Detail Invoice dan Pembayaran sekarang dapat dibaca dengan hak Lihat masing-masing modul tanpa diarahkan ke halaman Edit. Tautan sumber lintas modul mengikuti izin; transaksi lunas/invoice otomatis tidak menawarkan edit terpisah. Laporan Keuangan HTML/PDF memvalidasi bulan dan tetap tepat saat tanggal sistem 31. Laporan Hunian menghitung kamar unik dengan sewa aktif pada sebagian bulan, mengecualikan tanggal checkout, dan memvalidasi tahun; rata-rata harian serta histori sewa selesai belum dicakup.
 
-Checkpoint kelanjutan terbaru: [9 Oktober — cakupan tagihan multi-bulan](docs/reviews/2026-10-09-billing-coverage.md). Baca ini sebelum mengulang backlog.
+Checkpoint kelanjutan terbaru: [9 Oktober — pemulihan hak akses](docs/reviews/2026-10-09-access-recovery.md). Baca ini sebelum mengulang backlog.
 
 ## Cakupan pembayaran lewat link
 
 Pembayaran baru melalui link menyimpan awal/akhir masa yang ditagih sebagai snapshot. Detail Pembayaran menampilkan **Masa yang ditagih**; tanggal akhir eksklusif. Bulk Billing menganggap semua bulan yang bertumpang tindih sudah ditagih, termasuk pembayaran yang masih menunggu approval. Link lain untuk sewa tersebut tidak membuat tagihan kedua bila cakupan bertumpang tindih atau sudah ada tagihan bulanan pada masa tersebut. Token yang ditolak tetap belum digunakan; hubungi pengelola untuk memakai tagihan yang sudah ada.
 
 Sewa/periode pembayaran pending dengan snapshot tidak boleh dipindahkan melalui Edit; hapus pending dan buat ulang bila sumbernya perlu dikoreksi. Perpanjangan sewa tidak memperluas cakupan tagihan lama, sehingga bulan sesudah akhir cakupan dapat ditagih. Alur link belum menghitung hanya sisa term setelah perpanjangan: gunakan tagihan bulanan untuk sisa masa, jangan mengirim link seluruh term yang bertumpang tindih. Pembayaran lama tidak di-backfill; periode satu bulan tetap menjadi fallback. Deduplikasi manual dan dukungan cicilan masih memerlukan desain/validasi terpisah.
+
+## Login untuk operator dengan hak terbatas
+
+Login tanpa tujuan tersimpan membuka menu pertama yang diizinkan untuk **Lihat**; dashboard tetap diprioritaskan bila diizinkan. Akun tanpa izin Lihat menuju Profil Akun. Membuka halaman HTML tanpa izin diarahkan ke menu yang diizinkan, atau menampilkan 403 bila tidak ada menu tersebut. Halaman 403 menyediakan Profil Akun dan Keluar serta petunjuk menghubungi pengelola. Request JSON tetap 403. Tujuan login yang tersimpan tetap diperiksa oleh otorisasi halaman; pemulihan tidak menambah izin akun.

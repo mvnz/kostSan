@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\AccessLanding;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -168,7 +169,12 @@ class CheckMenuPermission
                 abort(403, 'Anda tidak memiliki akses ke fitur ini.');
             }
 
-            return redirect()->route('dashboard')->with(
+            $landing = app(AccessLanding::class)->routeName($user);
+            if ($landing === null) {
+                abort(403, 'Anda tidak memiliki akses ke fitur ini.');
+            }
+
+            return redirect()->route($landing)->with(
                 'error',
                 'Anda tidak memiliki akses ke halaman tersebut.'
             );
