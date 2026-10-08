@@ -12,7 +12,7 @@ $pageTitle = 'Laporan Hunian';
     </div>
 </div>
 
-<div class="alert alert-info">Setiap kamar dihitung sekali bila memiliki sewa berstatus aktif pada sebagian bulan. Tanggal checkout tidak dihitung. Angka ini bukan rata-rata hunian harian dan belum mencakup histori sewa berstatus selesai.</div>
+<div class="alert alert-info">Setiap kamar dihitung sekali bila memiliki sewa {{ $cakupan === 'riwayat' ? 'aktif atau selesai' : 'aktif' }} pada sebagian bulan. Tanggal checkout tidak dihitung. Sewa menunggak tidak dimasukkan. Histori membutuhkan tanggal checkout yang valid. Angka ini bukan rata-rata hunian harian; pembagi memakai jumlah kamar yang ada saat ini.</div>
 <div class="card mb-3">
     <div class="card-body p-3">
         <form method="GET" class="row g-2 align-items-end">
@@ -22,6 +22,13 @@ $pageTitle = 'Laporan Hunian';
                     @foreach($tahunList as $t)
                     <option value="{{ $t }}" @selected($t == $tahun)>{{ $t }}</option>
                     @endforeach
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="cakupan-hunian" class="form-label fw-semibold">Cakupan sewa</label>
+                <select id="cakupan-hunian" name="cakupan" class="form-select">
+                    <option value="aktif" @selected($cakupan === 'aktif')>Sewa aktif</option>
+                    <option value="riwayat" @selected($cakupan === 'riwayat')>Aktif dan riwayat selesai</option>
                 </select>
             </div>
             <div class="col-md-2">

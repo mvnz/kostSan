@@ -96,9 +96,9 @@ Di **Keuangan**, pilih bulan dan jenis transaksi lalu tekan **Export CSV**. Koso
 
 Pendaftaran/pembayaran melalui link publik sekarang membersihkan unggahan baru bila database gagal, tanpa menghabiskan token; retry dapat dilakukan setelah masalah penyimpanan selesai. Jika storage menolak berkas, formulir menampilkan pesan pada kolom unggahan dan transaksi tidak dinyatakan sukses. Penggantian bukti manual yang gagal tetap mempertahankan bukti asli.
 
-Detail Invoice dan Pembayaran sekarang dapat dibaca dengan hak Lihat masing-masing modul tanpa diarahkan ke halaman Edit. Tautan sumber lintas modul mengikuti izin; transaksi lunas/invoice otomatis tidak menawarkan edit terpisah. Laporan Keuangan HTML/PDF memvalidasi bulan dan tetap tepat saat tanggal sistem 31. Laporan Hunian menghitung kamar unik dengan sewa aktif pada sebagian bulan, mengecualikan tanggal checkout, dan memvalidasi tahun; rata-rata harian serta histori sewa selesai belum dicakup.
+Detail Invoice dan Pembayaran sekarang dapat dibaca dengan hak Lihat masing-masing modul tanpa diarahkan ke halaman Edit. Tautan sumber lintas modul mengikuti izin; transaksi lunas/invoice otomatis tidak menawarkan edit terpisah. Laporan Keuangan HTML/PDF memvalidasi bulan dan tetap tepat saat tanggal sistem 31. Laporan Hunian menghitung kamar unik pada sebagian bulan, mengecualikan tanggal checkout, dan memvalidasi tahun/cakupan; rata-rata harian belum dicakup.
 
-Checkpoint kelanjutan terbaru: [9 Oktober — pemulihan hak akses](docs/reviews/2026-10-09-access-recovery.md). Baca ini sebelum mengulang backlog.
+Checkpoint kelanjutan terbaru: [9 Oktober — histori hunian](docs/reviews/2026-10-09-occupancy-history.md). Baca ini sebelum mengulang backlog.
 
 ## Cakupan pembayaran lewat link
 
@@ -109,3 +109,9 @@ Sewa/periode pembayaran pending dengan snapshot tidak boleh dipindahkan melalui 
 ## Login untuk operator dengan hak terbatas
 
 Login tanpa tujuan tersimpan membuka menu pertama yang diizinkan untuk **Lihat**; dashboard tetap diprioritaskan bila diizinkan. Akun tanpa izin Lihat menuju Profil Akun. Membuka halaman HTML tanpa izin diarahkan ke menu yang diizinkan, atau menampilkan 403 bila tidak ada menu tersebut. Halaman 403 menyediakan Profil Akun dan Keluar serta petunjuk menghubungi pengelola. Request JSON tetap 403. Tujuan login yang tersimpan tetap diperiksa oleh otorisasi halaman; pemulihan tidak menambah izin akun.
+
+## Histori hunian
+
+Di **Laporan Hunian**, pilih tahun dan **Cakupan sewa → Aktif dan riwayat selesai**, lalu **Tampilkan**. Pilihan bawaan tetap Sewa aktif. Dashboard memakai aktif dan selesai untuk grafik enam bulan. Pergantian penghuni dalam kamar yang sama dihitung sekali per bulan; checkout pada tanggal pertama tidak masuk bulan tersebut. Sewa menunggak, interval kosong/terbalik, dan sewa selesai tanpa checkout tidak dimasukkan. Daftar status kamar di bawah laporan tetap menunjukkan sewa aktif.
+
+Metrik menunjukkan kamar yang dihuni pada sebagian bulan, bukan rata-rata kamar per hari. Persentase dan rata-rata bulan memakai jumlah kamar saat ini; belum merekonstruksi perubahan inventaris kamar atau sewa yang dihapus. Untuk laporan historis yang akurat, pertahankan tanggal masuk/keluar dan riwayat sewa selesai.

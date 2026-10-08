@@ -77,15 +77,8 @@ Route::get('/', function () {
     $hunianPct = [];
     for ($offset = 5; $offset >= 0; $offset--) {
         $bulan = Carbon::now()->startOfMonth()->subMonths($offset);
-        $awal = $bulan->copy()->startOfMonth();
-        $akhir = $bulan->copy()->endOfMonth();
         $hunianLabels[] = $bulan->translatedFormat('M');
-        $terisi = Sewa::where('tanggal_masuk', '<=', $akhir)
-            ->where(function ($q) use ($awal) {
-                $q->whereNull('tanggal_keluar')
-                  ->orWhere('tanggal_keluar', '>=', $awal);
-            })
-            ->count();
+        $terisi = app(\App\Services\MonthlyOccupancy::class)->rooms($bulan, includeCompleted: true);
         $hunianData[] = $terisi;
         $hunianPct[] = $totalKamar > 0 ? round($terisi / $totalKamar * 100) : 0;
     }

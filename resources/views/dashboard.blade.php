@@ -709,6 +709,7 @@
                 <a href="{{ route('kamars.sewa') }}" class="btn btn-sm btn-outline-primary">Peta Kamar</a>
             </div>
             <div class="card-body pt-3">
+                <p class="small text-body-secondary">Kamar unik dengan sewa aktif atau selesai pada sebagian bulan; checkout eksklusif. Bukan rata-rata harian. Pembagi memakai jumlah kamar saat ini.</p>
                 <canvas id="chartHunian" height="220"></canvas>
             </div>
         </div>
