@@ -3,6 +3,7 @@
 @section('content')
 <div class="page-head"><h2>Detail Pembayaran #{{ $pembayaran->id }}</h2><p>Telusuri pembayaran dan pencatatan keuangan asal.</p></div>
 <div class="card"><div class="card-body"><dl class="row">
+@if(session('sewa_payment_link'))<div class="alert alert-success"><strong>Link bukti pembayaran:</strong> <a class="text-break" href="{{ session('sewa_payment_link') }}" target="_blank" rel="noopener">{{ session('sewa_payment_link') }}</a><div class="small mt-1">Salin dan kirim hanya kepada penghuni terkait. Link berlaku tujuh hari dan satu kali pakai.</div></div>@endif
 <dt class="col-sm-3">Penghuni</dt><dd class="col-sm-9 text-break">{{ $pembayaran->sewa?->penghuni?->nama ?? '-' }}</dd>
 <dt class="col-sm-3">Kamar</dt><dd class="col-sm-9">{{ $pembayaran->sewa?->kamar?->nomor ?? '-' }}</dd>
 <dt class="col-sm-3">Periode</dt><dd class="col-sm-9">{{ $pembayaran->periode?->format('m/Y') }}</dd>
@@ -20,6 +21,7 @@
 @if($pembayaran->status !== 'lunas')
 @canMenu('manajemen_sewa.data_sewa', 'update')
 <a class="btn btn-primary" href="{{ route('pembayarans.edit', $pembayaran) }}">Edit pembayaran</a>
+<form method="POST" action="{{ route('payment-registrations.generate', $pembayaran) }}" onsubmit="return confirm('Buat link satu kali untuk penghuni mengirim metode dan bukti pembayaran tagihan ini? Link lama untuk tagihan ini akan dinonaktifkan.')">@csrf<button class="btn btn-outline-primary" type="submit">Buat link bukti</button></form>
 <form method="POST" action="{{ route('pembayarans.approve', $pembayaran) }}" onsubmit="return confirm('Setujui pembayaran ini dan catat pemasukan?')">@csrf<button class="btn btn-success" type="submit">Approve pembayaran</button></form>
 @endCanMenu
 @endif

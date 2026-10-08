@@ -98,7 +98,7 @@ Pendaftaran/pembayaran melalui link publik sekarang membersihkan unggahan baru b
 
 Detail Invoice dan Pembayaran sekarang dapat dibaca dengan hak Lihat masing-masing modul tanpa diarahkan ke halaman Edit. Tautan sumber lintas modul mengikuti izin; transaksi lunas/invoice otomatis tidak menawarkan edit terpisah. Laporan Keuangan HTML/PDF memvalidasi bulan dan tetap tepat saat tanggal sistem 31. Laporan Hunian menghitung kamar unik pada sebagian bulan, mengecualikan tanggal checkout, dan memvalidasi tahun/cakupan; rata-rata harian belum dicakup.
 
-Checkpoint kelanjutan terbaru: [9 Oktober — histori hunian](docs/reviews/2026-10-09-occupancy-history.md). Baca ini sebelum mengulang backlog.
+Checkpoint kelanjutan terbaru: [9 Oktober — link bukti untuk tagihan existing](docs/reviews/2026-10-09-existing-bill-payment-link.md). Baca ini sebelum mengulang backlog.
 
 ## Cakupan pembayaran lewat link
 
@@ -115,3 +115,9 @@ Login tanpa tujuan tersimpan membuka menu pertama yang diizinkan untuk **Lihat**
 Di **Laporan Hunian**, pilih tahun dan **Cakupan sewa → Aktif dan riwayat selesai**, lalu **Tampilkan**. Pilihan bawaan tetap Sewa aktif. Dashboard memakai aktif dan selesai untuk grafik enam bulan. Pergantian penghuni dalam kamar yang sama dihitung sekali per bulan; checkout pada tanggal pertama tidak masuk bulan tersebut. Sewa menunggak, interval kosong/terbalik, dan sewa selesai tanpa checkout tidak dimasukkan. Daftar status kamar di bawah laporan tetap menunjukkan sewa aktif.
 
 Metrik menunjukkan kamar yang dihuni pada sebagian bulan, bukan rata-rata kamar per hari. Persentase dan rata-rata bulan memakai jumlah kamar saat ini; belum merekonstruksi perubahan inventaris kamar atau sewa yang dihapus. Untuk laporan historis yang akurat, pertahankan tanggal masuk/keluar dan riwayat sewa selesai.
+
+## Link bukti untuk tagihan yang sudah ada
+
+Operator dengan hak **Edit Data Sewa** membuka Detail Pembayaran pending lalu menekan **Buat link bukti**. Link berlaku tujuh hari dan satu kali pakai; pembuatan ulang menonaktifkan link lama yang belum dipakai. Kirim link hanya kepada penghuni terkait. Penghuni dapat memilih tunai atau transfer, mengunggah bukti, dan menambahkan keterangan. Transfer wajib memiliki bukti; tunai boleh tanpa unggahan.
+
+Link ini memperbarui tagihan existing tanpa membuat pembayaran/invoice kedua dan tidak menerima perubahan nominal, periode, cakupan, sewa, atau status dari browser. Status tetap menunggu approval pemilik. Tagihan lunas tidak dapat diberi/dipakai link. Penggantian bukti lama dilakukan setelah transaksi commit; kegagalan database/storage mempertahankan bukti/token lama agar aman dicoba ulang. Link seluruh-term dari halaman Sewa tetap untuk membuat tagihan baru bila belum ada cakupan; gunakan link Detail Pembayaran bila bulk/manual sudah membuat tagihan.

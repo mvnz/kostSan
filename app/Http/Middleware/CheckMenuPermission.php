@@ -61,6 +61,7 @@ class CheckMenuPermission
         'sewas.update'                       => ['manajemen_sewa.data_sewa', 'update'],
         'sewas.destroy'                      => ['manajemen_sewa.data_sewa', 'delete'],
         'sewa-payment-registrations.generate' => ['manajemen_sewa.data_sewa', 'create'],
+        'payment-registrations.generate'      => ['manajemen_sewa.data_sewa', 'update'],
 
         // Pembayaran (bagian dari manajemen sewa)
         'pembayarans.index'                  => ['manajemen_sewa.data_sewa', 'view'],

@@ -34,15 +34,38 @@ class SewaPaymentRegistrationController extends Controller
             ->with('sewa_payment_link', route('sewa-payment-registrations.show', $link->token));
     }
 
+    public function generateForPayment(Pembayaran $pembayaran)
+    {
+        $link = DB::transaction(function () use ($pembayaran): SewaPaymentLink {
+            $payment = Pembayaran::whereKey($pembayaran->id)->lockForUpdate()->firstOrFail();
+            if ($payment->status !== 'belum_lunas') {
+                throw ValidationException::withMessages(['pembayaran' => 'Link hanya dapat dibuat untuk tagihan yang belum lunas.']);
+            }
+
+            SewaPaymentLink::where('payment_id', $payment->id)->whereNull('used_at')->update(['used_at' => now()]);
+
+            return SewaPaymentLink::create([
+                'sewa_id' => $payment->sewa_id,
+                'payment_id' => $payment->id,
+                'token' => Str::random(64),
+                'expires_at' => now()->addDays(7),
+            ]);
+        });
+
+        return redirect()->route('pembayarans.show', $pembayaran)
+            ->with('success', 'Link unggah bukti untuk tagihan ini berhasil dibuat. Link lama yang belum dipakai dinonaktifkan.')
+            ->with('sewa_payment_link', route('sewa-payment-registrations.show', $link->token));
+    }
+
     public function show(string $token)
     {
-        $link = SewaPaymentLink::with('sewa.kamar', 'sewa.penghuni')->where('token', $token)->first();
+        $link = SewaPaymentLink::with('sewa.kamar', 'sewa.penghuni', 'payment')->where('token', $token)->first();
 
-        if (! $link || $link->isExpired()) {
+        if (! $link || $link->isExpired() || ($link->payment_id && $link->payment?->status !== 'belum_lunas')) {
             return view('sewa-payment-registrations.expired');
         }
 
-        $billing = $this->calculateBilling($link->sewa);
+        $billing = $link->payment_id ? $this->existingPaymentBilling($link->payment, $link->sewa) : $this->calculateBilling($link->sewa);
 
         return view('sewa-payment-registrations.form', [
             'link' => $link,
@@ -71,6 +94,40 @@ class SewaPaymentRegistrationController extends Controller
                 $lease = Sewa::whereKey($link->sewa_id)->lockForUpdate()->firstOrFail();
                 $link->setRelation('sewa', $lease);
                 $lease->loadMissing('penghuni');
+
+                if ($link->payment_id) {
+                    $payment = Pembayaran::whereKey($link->payment_id)->lockForUpdate()->first();
+                    if (! $payment || $payment->sewa_id !== $lease->id || $payment->status !== 'belum_lunas') {
+                        return false;
+                    }
+                    if ($validated['metode'] === 'transfer' && ! $request->hasFile('bukti_pembayaran') && ! $payment->bukti_pembayaran_path) {
+                        throw ValidationException::withMessages(['bukti_pembayaran' => 'Bukti pembayaran wajib diunggah untuk metode transfer.']);
+                    }
+
+                    $replacement = null;
+                    if ($request->hasFile('bukti_pembayaran')) {
+                        $replacement = app(PrivateUpload::class)->store($request->file('bukti_pembayaran'), 'bukti-pembayaran-sewa', 'bukti_pembayaran');
+                        $uploads[] = $replacement;
+                    }
+                    $oldProof = $payment->bukti_pembayaran_path;
+                    $note = trim($validated['keterangan'] ?? '');
+                    $payment->update([
+                        'tanggal_bayar' => now()->toDateString(),
+                        'metode' => $validated['metode'],
+                        'keterangan' => trim($note.' [Bukti dikirim melalui link; menunggu approval admin]'),
+                        ...($replacement ? ['bukti_pembayaran_path' => $replacement] : []),
+                    ]);
+                    if ($replacement && $oldProof) {
+                        DB::afterCommit(fn () => Storage::disk('local')->delete($oldProof));
+                    }
+                    $link->update(['used_at' => now()]);
+                    DB::afterCommit(function () use (&$committed): void {
+                        $committed = true;
+                    });
+
+                    return true;
+                }
+
                 $billing = $this->calculateBilling($lease);
                 $start = $lease->tanggal_masuk->copy();
                 $end = $lease->tanggal_keluar?->copy() ?? $start->copy()->addMonthsNoOverflow($billing['durasi_bulan']);
@@ -157,6 +214,25 @@ class SewaPaymentRegistrationController extends Controller
             'total_sebelum_pembulatan' => $totalSebelumPembulatan,
             'total' => $totalSetelahPembulatan,
             'pembulatan_kelipatan' => $kelipatanPembulatan,
+        ];
+    }
+
+    private function existingPaymentBilling(Pembayaran $payment, Sewa $sewa): array
+    {
+        $amount = (float) $payment->jumlah;
+
+        return [
+            'biaya_bulanan' => (float) $sewa->biaya_bulanan,
+            'harga_tier_bulanan' => $amount,
+            'durasi_bulan' => 1,
+            'subtotal_harga_dasar' => $amount,
+            'subtotal' => $amount,
+            'diskon' => 0,
+            'total_sebelum_pembulatan' => $amount,
+            'total' => $amount,
+            'pembulatan_kelipatan' => 1,
+            'existing_payment' => true,
+            'periode' => $payment->periode,
         ];
     }
 
