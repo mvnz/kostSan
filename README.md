@@ -98,7 +98,7 @@ Pendaftaran/pembayaran melalui link publik sekarang membersihkan unggahan baru b
 
 Detail Invoice dan Pembayaran sekarang dapat dibaca dengan hak Lihat masing-masing modul tanpa diarahkan ke halaman Edit. Tautan sumber lintas modul mengikuti izin; transaksi lunas/invoice otomatis tidak menawarkan edit terpisah. Laporan Keuangan HTML/PDF memvalidasi bulan dan tetap tepat saat tanggal sistem 31. Laporan Hunian menghitung kamar unik pada sebagian bulan, mengecualikan tanggal checkout, dan memvalidasi tahun/cakupan; rata-rata harian belum dicakup.
 
-Checkpoint kelanjutan terbaru: [9 Oktober — pembalikan pembayaran](docs/reviews/2026-10-09-payment-reversal.md). Baca ini sebelum mengulang backlog.
+Checkpoint kelanjutan terbaru: [Penutupan malam 9 Oktober](docs/reviews/2026-10-09-night-closing.md). Baca ini sebelum mengulang backlog.
 
 ## Cakupan pembayaran lewat link
 
