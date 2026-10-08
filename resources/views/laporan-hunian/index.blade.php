@@ -12,12 +12,13 @@ $pageTitle = 'Laporan Hunian';
     </div>
 </div>
 
+<div class="alert alert-info">Setiap kamar dihitung sekali bila memiliki sewa berstatus aktif pada sebagian bulan. Tanggal checkout tidak dihitung. Angka ini bukan rata-rata hunian harian dan belum mencakup histori sewa berstatus selesai.</div>
 <div class="card mb-3">
     <div class="card-body p-3">
         <form method="GET" class="row g-2 align-items-end">
             <div class="col-md-2">
-                <label class="form-label fw-semibold">Tahun</label>
-                <select name="tahun" class="form-select">
+                <label for="tahun-hunian" class="form-label fw-semibold">Tahun</label>
+                <select id="tahun-hunian" name="tahun" class="form-select">
                     @foreach($tahunList as $t)
                     <option value="{{ $t }}" @selected($t == $tahun)>{{ $t }}</option>
                     @endforeach

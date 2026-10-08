@@ -11,21 +11,22 @@ class LaporanHunianController extends Controller
 {
     public function index(Request $request)
     {
-        $tahun = (int) ($request->integer('tahun') ?: Carbon::now()->year);
+        $filters = $request->validate(['tahun' => ['nullable', 'integer', 'between:1900,9999']]);
+        $tahun = (int) ($filters['tahun'] ?? Carbon::now()->year);
         $totalKamar = Kamar::count();
 
         $bulanData = [];
         for ($m = 1; $m <= 12; $m++) {
             $awal  = Carbon::create($tahun, $m, 1)->startOfMonth();
-            $akhir = $awal->copy()->endOfMonth();
+            $akhir = $awal->copy()->addMonth()->toDateString();
 
-            $terisi = Sewa::where('tanggal_masuk', '<=', $akhir)
+            $terisi = Sewa::whereDate('tanggal_masuk', '<', $akhir)
                 ->where(function ($q) use ($awal) {
                     $q->whereNull('tanggal_keluar')
-                      ->orWhere('tanggal_keluar', '>=', $awal);
+                      ->orWhereDate('tanggal_keluar', '>', $awal->toDateString());
                 })
                 ->where('status', 'aktif')
-                ->count();
+                ->distinct()->count('kamar_id');
 
             $pct = $totalKamar > 0 ? round($terisi / $totalKamar * 100, 1) : 0;
 

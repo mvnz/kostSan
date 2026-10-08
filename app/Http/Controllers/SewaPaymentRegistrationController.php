@@ -6,8 +6,10 @@ use App\Models\KostProfile;
 use App\Models\Pembayaran;
 use App\Models\Sewa;
 use App\Models\SewaPaymentLink;
+use App\Services\PrivateUpload;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class SewaPaymentRegistrationController extends Controller
@@ -34,7 +36,7 @@ class SewaPaymentRegistrationController extends Controller
     {
         $link = SewaPaymentLink::with('sewa.kamar', 'sewa.penghuni')->where('token', $token)->first();
 
-        if (!$link || $link->isExpired()) {
+        if (! $link || $link->isExpired()) {
             return view('sewa-payment-registrations.expired');
         }
 
@@ -54,35 +56,52 @@ class SewaPaymentRegistrationController extends Controller
             'bukti_pembayaran' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:4096'],
         ]);
 
-        $created = DB::transaction(function () use ($token, $validated, $request) {
-            $link = SewaPaymentLink::where('token', $token)->lockForUpdate()->first();
+        $uploads = [];
+        $committed = false;
+        try {
+            $created = DB::transaction(function () use ($token, $validated, $request, &$uploads, &$committed) {
+                $link = SewaPaymentLink::where('token', $token)->lockForUpdate()->first();
 
-            if (!$link || $link->isExpired()) {
-                return false;
+                if (! $link || $link->isExpired()) {
+                    return false;
+                }
+
+                $link->loadMissing('sewa.penghuni');
+                $billing = $this->calculateBilling($link->sewa);
+
+                $validated['sewa_id'] = $link->sewa_id;
+                $validated['periode'] = now()->toDateString();
+                $validated['tanggal_bayar'] = now()->toDateString();
+                $validated['jumlah'] = $billing['total'];
+                $validated['status'] = 'belum_lunas';
+                $validated['keterangan'] = trim(($validated['keterangan'] ?? '').' [Menunggu approval admin]');
+
+                if ($request->hasFile('bukti_pembayaran')) {
+                    $validated['bukti_pembayaran_path'] = app(PrivateUpload::class)->store($request->file('bukti_pembayaran'), 'bukti-pembayaran-sewa', 'bukti_pembayaran');
+                    $uploads[] = $validated['bukti_pembayaran_path'];
+                }
+
+                Pembayaran::create($validated);
+
+                $link->update(['used_at' => now()]);
+                DB::afterCommit(function () use (&$committed): void {
+                    $committed = true;
+                });
+
+                return true;
+            });
+        } catch (\Throwable $exception) {
+            if (! $committed) {
+                foreach ($uploads as $path) {
+                    if ($path) {
+                        Storage::disk('local')->delete($path);
+                    }
+                }
             }
+            throw $exception;
+        }
 
-            $link->loadMissing('sewa.penghuni');
-            $billing = $this->calculateBilling($link->sewa);
-
-            $validated['sewa_id'] = $link->sewa_id;
-            $validated['periode'] = now()->toDateString();
-            $validated['tanggal_bayar'] = now()->toDateString();
-            $validated['jumlah'] = $billing['total'];
-            $validated['status'] = 'belum_lunas';
-            $validated['keterangan'] = trim(($validated['keterangan'] ?? '') . ' [Menunggu approval admin]');
-
-            if ($request->hasFile('bukti_pembayaran')) {
-                $validated['bukti_pembayaran_path'] = $request->file('bukti_pembayaran')->store('bukti-pembayaran-sewa', 'local');
-            }
-
-            Pembayaran::create($validated);
-
-            $link->update(['used_at' => now()]);
-
-            return true;
-        });
-
-        if (!$created) {
+        if (! $created) {
             return view('sewa-payment-registrations.expired');
         }
 

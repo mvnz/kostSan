@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Keuangan;
 use App\Models\Pembayaran;
+use App\Services\PrivateUpload;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -40,6 +41,40 @@ class KeuanganController extends Controller
             'pemasukanBulanIni',
             'pengeluaranBulanIni'
         ));
+    }
+
+    public function export(Request $request)
+    {
+        $filters = $request->validate([
+            'bulan' => ['nullable', 'date_format:Y-m'],
+            'jenis' => ['nullable', 'in:pemasukan,pengeluaran'],
+        ]);
+        $query = Keuangan::query();
+        if (! empty($filters['bulan'])) {
+            $start = CarbonImmutable::createFromFormat('!Y-m', $filters['bulan']);
+            $query->where('tanggal', '>=', $start->toDateString())
+                ->where('tanggal', '<', $start->addMonth()->toDateString());
+        }
+        if (! empty($filters['jenis'])) {
+            $query->where('jenis', $filters['jenis']);
+        }
+
+        return response()->streamDownload(function () use ($query): void {
+            $output = fopen('php://output', 'w');
+            fwrite($output, "\xEF\xBB\xBF");
+            fputcsv($output, ['ID', 'Tanggal', 'Jenis', 'Kategori', 'Deskripsi', 'Jumlah', 'Sumber', 'ID Pembayaran'], ',', '"', '');
+            $query->chunkById(200, function ($entries) use ($output): void {
+                foreach ($entries as $entry) {
+                    $row = [$entry->id, $entry->tanggal?->toDateString() ?? '', $entry->jenis, $entry->kategori, $entry->deskripsi, $entry->jumlah, $entry->payment_id ? 'otomatis' : 'manual', $entry->payment_id ?? ''];
+                    $row = array_map(fn ($value) => preg_match('/^[\s]*[=+@-]/u', (string) $value) ? "'".$value : $value, $row);
+                    fputcsv($output, $row, ',', '"', '');
+                }
+            });
+            fclose($output);
+        }, 'keuangan-'.now()->format('Ymd-His').'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Cache-Control' => 'no-store, private',
+        ]);
     }
 
     public function reconciliation(Request $request)
@@ -103,7 +138,7 @@ class KeuanganController extends Controller
         ]);
 
         if ($request->hasFile('bukti')) {
-            $validated['bukti_path'] = $request->file('bukti')->store('bukti-keuangan', 'local');
+            $validated['bukti_path'] = app(PrivateUpload::class)->store($request->file('bukti'), 'bukti-keuangan', 'bukti');
         }
 
         try {
@@ -166,7 +201,7 @@ class KeuanganController extends Controller
                     $validated['bukti_path'] = null;
                 }
                 if ($request->hasFile('bukti')) {
-                    $replacement = $request->file('bukti')->store('bukti-keuangan', 'local');
+                    $replacement = app(PrivateUpload::class)->store($request->file('bukti'), 'bukti-keuangan', 'bukti');
                     $validated['bukti_path'] = $replacement;
                 }
                 $entry->update($validated);

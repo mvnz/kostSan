@@ -184,6 +184,7 @@ Route::post('pembayarans/{pembayaran}/approve', [PembayaranController::class, 'a
 Route::get('pembayarans-bulk', [PembayaranController::class, 'bulkBilling'])->name('pembayarans.bulk-billing');
 Route::post('pembayarans-bulk', [PembayaranController::class, 'storeBulkBilling'])->name('pembayarans.bulk-billing.store');
 Route::resource('reservasis', ReservasiController::class);
+Route::get('keuangans/export', [KeuanganController::class, 'export'])->name('keuangans.export');
 Route::get('keuangans/reconciliation', [KeuanganController::class, 'reconciliation'])->name('keuangans.reconciliation');
 Route::resource('keuangans', KeuanganController::class);
 Route::get('laporan-keuangan', [LaporanKeuanganController::class, 'index'])->name('laporan-keuangan.index');

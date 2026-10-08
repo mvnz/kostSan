@@ -6,6 +6,7 @@ use App\Models\Kamar;
 use App\Models\Keuangan;
 use App\Models\Pembayaran;
 use App\Models\Sewa;
+use App\Services\PrivateUpload;
 use App\Services\RoomAvailability;
 use App\Services\WhatsAppService;
 use Carbon\Carbon;
@@ -115,7 +116,7 @@ class PembayaranController extends Controller
         $validated['status'] = 'belum_lunas';
 
         if ($request->hasFile('bukti_pembayaran')) {
-            $validated['bukti_pembayaran_path'] = $request->file('bukti_pembayaran')->store('bukti-pembayaran-sewa', 'local');
+            $validated['bukti_pembayaran_path'] = app(PrivateUpload::class)->store($request->file('bukti_pembayaran'), 'bukti-pembayaran-sewa', 'bukti_pembayaran');
         }
 
         try {
@@ -132,7 +133,10 @@ class PembayaranController extends Controller
 
     public function show(Pembayaran $pembayaran)
     {
-        return redirect()->route('pembayarans.edit', $pembayaran);
+        $pembayaran->load('sewa.kamar', 'sewa.penghuni', 'ledgerEntry');
+
+        return response()->view('pembayarans.show', compact('pembayaran'))
+            ->header('Cache-Control', 'no-store, private');
     }
 
     public function edit(Pembayaran $pembayaran)
@@ -164,7 +168,7 @@ class PembayaranController extends Controller
                 $validated['status'] = 'belum_lunas';
 
                 if ($request->hasFile('bukti_pembayaran')) {
-                    $replacement = $request->file('bukti_pembayaran')->store('bukti-pembayaran-sewa', 'local');
+                    $replacement = app(PrivateUpload::class)->store($request->file('bukti_pembayaran'), 'bukti-pembayaran-sewa', 'bukti_pembayaran');
                     $validated['bukti_pembayaran_path'] = $replacement;
                     $oldProof = $payment->bukti_pembayaran_path;
                     if ($oldProof) {

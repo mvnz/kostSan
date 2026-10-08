@@ -93,7 +93,10 @@ class InvoiceController extends Controller
 
     public function show(Invoice $invoice)
     {
-        return redirect()->route('invoices.edit', $invoice);
+        $invoice->load('penghuni', 'payment.sewa.kamar');
+
+        return response()->view('invoices.show', compact('invoice'))
+            ->header('Cache-Control', 'no-store, private');
     }
 
     public function edit(Invoice $invoice)

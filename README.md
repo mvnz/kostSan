@@ -48,6 +48,7 @@ composer audit --locked
 PAO_DISABLE=1 vendor/bin/phpunit --fail-on-warning --fail-on-risky
 npm test
 npm ci --ignore-scripts
+npm audit --audit-level=low
 npm run build
 ```
 
@@ -88,3 +89,13 @@ Buka **Keuangan → Rekonsiliasi Pembayaran–Keuangan**. Dibutuhkan hak **Lihat
 Laporan hanya membaca data. Pembayaran lama mungkin sudah dicatat manual: cocokkan bukti sebelum melakukan koreksi agar tidak membuat pemasukan ganda. Laporan tidak menebak relasi atau melakukan backfill. Detail Keuangan dapat dibaca tanpa izin edit; bukti tetap melalui endpoint privat, dan tautan pembayaran asal mengikuti izin Data Sewa.
 
 Bukti Keuangan manual kini dipertahankan jika perubahan/penghapusan database gagal. Unggahan pengganti yang gagal disimpan dibersihkan; bukti lama dibersihkan setelah commit berhasil. Kegagalan penyimpanan berkas setelah commit tetap membutuhkan pemantauan administratif.
+
+## Ekspor Keuangan dan pemulihan unggahan
+
+Di **Keuangan**, pilih bulan dan jenis transaksi lalu tekan **Export CSV**. Kosongkan bulan untuk semua periode; Reset mengembalikan bulan saat ini. CSV mengikuti bulan/jenis, termasuk semua halaman. Pencarian teks pada tabel tidak mengubah isi ekspor. Nominal memakai dua desimal tanpa pemisah ribuan; sumber manual/otomatis dan ID pembayaran dapat ditelusuri. CSV tidak berisi path bukti dan melindungi teks yang dapat dibaca sebagai formula spreadsheet. Hak Lihat Keuangan diperlukan.
+
+Pendaftaran/pembayaran melalui link publik sekarang membersihkan unggahan baru bila database gagal, tanpa menghabiskan token; retry dapat dilakukan setelah masalah penyimpanan selesai. Jika storage menolak berkas, formulir menampilkan pesan pada kolom unggahan dan transaksi tidak dinyatakan sukses. Penggantian bukti manual yang gagal tetap mempertahankan bukti asli.
+
+Detail Invoice dan Pembayaran sekarang dapat dibaca dengan hak Lihat masing-masing modul tanpa diarahkan ke halaman Edit. Tautan sumber lintas modul mengikuti izin; transaksi lunas/invoice otomatis tidak menawarkan edit terpisah. Laporan Keuangan HTML/PDF memvalidasi bulan dan tetap tepat saat tanggal sistem 31. Laporan Hunian menghitung kamar unik dengan sewa aktif pada sebagian bulan, mengecualikan tanggal checkout, dan memvalidasi tahun; rata-rata harian serta histori sewa selesai belum dicakup.
+
+Checkpoint kelanjutan terbaru: [9 Oktober — pengembangan malam](docs/reviews/2026-10-09-night-checkpoint.md). Baca ini sebelum mengulang backlog.

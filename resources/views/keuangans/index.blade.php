@@ -57,7 +57,7 @@ $pageTitle = 'Keuangan';
     <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-3">
         <div class="card-title mb-0">
             <h5 class="mb-1">Pencatatan Keuangan</h5>
-            <small class="text-body-secondary">Kas masuk dan keluar operasional kost.</small>
+            <small class="text-body-secondary">Kas masuk dan keluar operasional kost. CSV mengikuti filter bulan/jenis; pencarian tabel tidak mengubah ekspor.</small>
         </div>
         <div class="d-flex gap-2 flex-wrap">
             <select id="filter-jenis-keuangan" class="form-select" style="min-width: 165px;">
@@ -67,7 +67,7 @@ $pageTitle = 'Keuangan';
             </select>
             <input type="month" id="filter-bulan-keuangan" class="form-control" style="min-width: 175px;" value="{{ now()->format('Y-m') }}" data-current-month="{{ now()->format('Y-m') }}">
             <button type="button" class="btn btn-outline-secondary" id="reset-filter-keuangan"><i class="bx bx-reset me-1"></i>Reset</button>
-            <button class="btn btn-outline-secondary"><i class="bx bx-export me-1"></i>Export</button>
+            <a id="export-keuangan" href="{{ route('keuangans.export', ['bulan' => now()->format('Y-m')]) }}" data-export-url="{{ route('keuangans.export') }}" class="btn btn-outline-secondary"><i class="bx bx-export me-1"></i>Export CSV</a>
             @canMenu('keuangan.data_keuangan', 'create')
             <a href="{{ route('keuangans.create') }}" class="btn btn-primary"><i class="bx bx-plus me-1"></i>Tambah Transaksi</a>
             @endCanMenu
@@ -180,6 +180,11 @@ $pageTitle = 'Keuangan';
             table.column(colJenis).search(jenis ? ('JENIS:' + jenis) : '', false, false);
             table.column(colTransaksi).search(bulan ? ('BULAN:' + bulan) : '', false, false);
             table.draw();
+            const exportLink = document.getElementById('export-keuangan');
+            const exportUrl = new URL(exportLink.dataset.exportUrl, window.location.origin);
+            if (jenis) exportUrl.searchParams.set('jenis', jenis);
+            if (bulan) exportUrl.searchParams.set('bulan', bulan);
+            exportLink.href = exportUrl.toString();
         }
 
         $('#filter-jenis-keuangan, #filter-bulan-keuangan').on('change', applyKeuanganFilters);

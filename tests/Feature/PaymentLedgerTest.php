@@ -57,6 +57,8 @@ class PaymentLedgerTest extends TestCase
             'jumlah' => 550000.25,
         ]);
         $entry = Keuangan::firstOrFail();
+        $csv = $this->get('/keuangans/export?bulan=2026-10&jenis=pemasukan')->assertOk()->streamedContent();
+        $this->assertStringContainsString('550000.25,otomatis,'.$payment->id, $csv);
         $this->assertSame('2026-10-09', $entry->tanggal->toDateString());
         $this->assertStringContainsString('Pembayaran #'.$payment->id, $entry->deskripsi);
         $this->get('/keuangans')->assertOk()->assertSee('Pembayaran #'.$payment->id);
