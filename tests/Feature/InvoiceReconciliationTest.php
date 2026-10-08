@@ -89,4 +89,44 @@ class InvoiceReconciliationTest extends TestCase
         DB::table('pembayarans')->where('id', $payment->id)->update(['status' => 'lunas']);
         $this->get('/invoices/reconciliation?kategori=tidak_sesuai')->assertViewHas('counts', fn ($counts) => $counts['tidak_sesuai'] === 1);
     }
+
+    public function test_month_filter_includes_both_sides_of_shifted_period_and_counts_only_matching_records(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $payment = $this->payment();
+        DB::table('invoices')->where('payment_id', $payment->id)->update(['periode' => '2026-11-01']);
+        $missing = $this->payment();
+        Invoice::where('payment_id', $missing->id)->delete();
+        DB::table('pembayarans')->where('id', $missing->id)->update(['periode' => '2026-10-31']);
+        foreach (['2026-09-30', '2026-10-01', '2026-10-31', '2026-11-01'] as $i => $date) {
+            Invoice::create(['penghuni_id' => $payment->sewa->penghuni_id, 'nomor_invoice' => 'MONTH-'.$i, 'periode' => $date, 'jatuh_tempo' => '2026-12-01', 'jumlah_tagihan' => 100, 'status' => 'draft', 'keterangan' => 'AUTO: lama']);
+        }
+        $this->get('/invoices/reconciliation?bulan=2026-10')
+            ->assertOk()->assertViewHas('counts', ['legacy' => 2, 'tanpa_invoice' => 1, 'tidak_sesuai' => 1])
+            ->assertSee('MONTH-1')->assertSee('MONTH-2')->assertDontSee('MONTH-0')->assertDontSee('MONTH-3');
+        $this->get('/invoices/reconciliation?kategori=tidak_sesuai&bulan=2026-11')
+            ->assertOk()->assertViewHas('counts', ['legacy' => 1, 'tanpa_invoice' => 0, 'tidak_sesuai' => 1])
+            ->assertViewHas('records', fn ($records) => $records->count() === 1);
+        $this->get('/invoices/reconciliation?bulan=2026-12')->assertViewHas('counts', ['legacy' => 0, 'tanpa_invoice' => 0, 'tidak_sesuai' => 0]);
+        $this->get('/invoices/reconciliation')->assertViewHas('counts', ['legacy' => 4, 'tanpa_invoice' => 1, 'tidak_sesuai' => 1]);
+    }
+
+    public function test_month_filter_rejects_invalid_input_and_survives_category_and_pagination_navigation(): void
+    {
+        $this->actingAs(User::factory()->create());
+        foreach (['2026-13', '2026-2', '2026-02-01', '<script>', '2026-00'] as $month) {
+            $this->getJson('/invoices/reconciliation?'.http_build_query(['bulan' => $month]))
+                ->assertUnprocessable()->assertJsonValidationErrors('bulan');
+        }
+        $payment = $this->payment();
+        for ($i = 0; $i < 26; $i++) {
+            Invoice::create(['penghuni_id' => $payment->sewa->penghuni_id, 'nomor_invoice' => 'FILTER-'.$i, 'periode' => '2026-10-01', 'jatuh_tempo' => '2026-10-10', 'jumlah_tagihan' => 100, 'status' => 'draft', 'keterangan' => 'AUTO: lama']);
+        }
+        $this->get('/invoices/reconciliation?kategori=legacy&bulan=2026-10')
+            ->assertOk()->assertSee('bulan=2026-10', false)
+            ->assertViewHas('records', fn ($records) => $records->total() === 26 && str_contains($records->nextPageUrl(), 'bulan=2026-10'));
+        $this->get('/invoices/reconciliation?kategori=legacy&bulan=2026-10&page=2')
+            ->assertOk()->assertSee('FILTER-25')->assertViewHas('records', fn ($records) => $records->count() === 1);
+        $this->get('/invoices/reconciliation?bulan=2026-02')->assertOk()->assertSee('Tidak ada data');
+    }
 }
