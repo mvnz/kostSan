@@ -246,7 +246,7 @@ $pageTitle = 'Bantuan';
                     <span class="help-step-number">7</span>
                     <div>
                         <strong class="d-block">Admin/pemilik verifikasi dan approve pembayaran</strong>
-                        <small class="text-body-secondary">Admin membuka menu Pembayaran, cek bukti transfer/keterangan, lalu klik Approve untuk mengubah status jadi "Lunas". Setelah lunas, status sewa penghuni ikut jadi aktif dan notifikasi WhatsApp konfirmasi bisa terkirim (jika diaktifkan).</small>
+                        <small class="text-body-secondary">Admin membuka menu Pembayaran, cek bukti transfer/keterangan, lalu klik Approve untuk mengubah status jadi "Lunas". Setelah lunas, pemasukan sewa otomatis tercatat di buku Keuangan, status sewa penghuni ikut jadi aktif, dan notifikasi WhatsApp konfirmasi bisa terkirim (jika diaktifkan).</small>
                     </div>
                 </div>
             </div>

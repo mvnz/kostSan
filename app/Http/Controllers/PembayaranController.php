@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Kamar;
+use App\Models\Keuangan;
 use App\Models\Pembayaran;
 use App\Models\Sewa;
 use App\Services\RoomAvailability;
@@ -230,6 +231,23 @@ class PembayaranController extends Controller
                 'tanggal_bayar' => $payment->tanggal_bayar ?? now()->toDateString(),
                 'keterangan' => trim(($payment->keterangan ?? '').' [Approved admin]'),
             ]);
+            $payment->loadMissing('sewa.kamar', 'sewa.penghuni');
+            Keuangan::firstOrCreate(
+                ['payment_id' => $payment->id],
+                [
+                    'tanggal' => $payment->tanggal_bayar->toDateString(),
+                    'jenis' => 'pemasukan',
+                    'kategori' => 'Sewa Kamar',
+                    'deskripsi' => sprintf(
+                        'Pembayaran #%d · %s · Kamar %s · Periode %s',
+                        $payment->id,
+                        $payment->sewa?->penghuni?->nama ?? '-',
+                        $payment->sewa?->kamar?->nomor ?? '-',
+                        $payment->periode?->format('m/Y') ?? '-'
+                    ),
+                    'jumlah' => $payment->jumlah,
+                ]
+            );
 
             return true;
         });
@@ -252,7 +270,7 @@ class PembayaranController extends Controller
             }
         }
 
-        return back()->with('success', $approved ? 'Pembayaran disetujui. Sewa yang sudah selesai tetap selesai.' : 'Pembayaran ini sudah disetujui sebelumnya.');
+        return back()->with('success', $approved ? 'Pembayaran disetujui dan pemasukan tercatat di buku Keuangan. Sewa yang sudah selesai tetap selesai.' : 'Pembayaran ini sudah disetujui sebelumnya.');
     }
 
     private function billingPeriod(Request $request): Carbon

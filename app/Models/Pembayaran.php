@@ -43,6 +43,11 @@ class Pembayaran extends Model
         return $this->hasOne(Invoice::class, 'payment_id');
     }
 
+    public function ledgerEntry(): HasOne
+    {
+        return $this->hasOne(Keuangan::class, 'payment_id');
+    }
+
     public function syncInvoiceFromPayment(): void
     {
         $this->loadMissing('sewa.kamar', 'sewa.penghuni');

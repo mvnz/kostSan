@@ -242,6 +242,7 @@ class OperationalIntegrityTest extends TestCase
         $this->assertSame('aktif', $lease->fresh()->status);
         $this->assertSame('terisi', $room->fresh()->status);
         $this->assertDatabaseHas('invoices', ['status' => 'lunas', 'jumlah_tagihan' => 3000000]);
+        $this->assertDatabaseHas('keuangans', ['payment_id' => $payment->id, 'jenis' => 'pemasukan', 'jumlah' => 3000000]);
     }
 
     public function test_document_requires_its_own_module_permission(): void

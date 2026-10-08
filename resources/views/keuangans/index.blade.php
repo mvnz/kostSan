@@ -112,7 +112,12 @@ $pageTitle = 'Keuangan';
                         @endif
                     </td>
                     <td>Rp {{ number_format((float)$item->jumlah,0,',','.') }}</td>
-                    <td>{{ $item->deskripsi ?: '-' }}</td>
+                    <td>
+                        {{ $item->deskripsi ?: '-' }}
+                        @if($item->payment_id)
+                            <span class="badge bg-label-info d-block mt-1" style="width: fit-content;">Otomatis · Pembayaran #{{ $item->payment_id }}</span>
+                        @endif
+                    </td>
                     <td>
                         @if($item->bukti_path)
                             <a href="{{ route('secure-files.show', ['path' => $item->bukti_path]) }}" target="_blank" class="btn btn-sm btn-outline-info">
@@ -124,9 +129,18 @@ $pageTitle = 'Keuangan';
                     </td>
                     <td>
                         <div class="d-flex align-items-center flex-wrap gap-1">
-                            <a href="{{ route('keuangans.show', $item) }}" class="btn btn-sm btn-action-detail">
-                                <i class="icon-base bx bx-detail me-1"></i>Detail
-                            </a>
+                            @if($item->payment_id)
+                                @canMenu('manajemen_sewa.data_sewa', 'view')
+                                <a href="{{ route('pembayarans.show', $item->payment_id) }}" class="btn btn-sm btn-action-detail">
+                                    <i class="icon-base bx bx-receipt me-1"></i>Pembayaran
+                                </a>
+                                @else
+                                <span class="text-body-secondary small">Sumber otomatis</span>
+                                @endCanMenu
+                            @else
+                                <a href="{{ route('keuangans.show', $item) }}" class="btn btn-sm btn-action-detail">
+                                    <i class="icon-base bx bx-detail me-1"></i>Detail
+                                </a>
                             @canMenu('keuangan.data_keuangan', 'update')
                             <a href="{{ route('keuangans.edit', $item) }}" class="btn btn-sm btn-edit-fancy">
                                 <i class="icon-base bx bx-edit-alt me-1"></i>Edit
@@ -138,6 +152,7 @@ $pageTitle = 'Keuangan';
                                 <button type="submit" class="btn btn-sm btn-action-danger"><i class="icon-base bx bx-trash me-1"></i>Delete</button>
                             </form>
                             @endCanMenu
+                            @endif
                         </div>
                     </td>
                 </tr>

@@ -6,12 +6,13 @@ use App\Models\Keuangan;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class KeuanganController extends Controller
 {
     public function index()
     {
-        $keuangans = Keuangan::query()
+        $keuangans = Keuangan::with('payment')
             ->orderByDesc('tanggal')
             ->orderByDesc('id')
             ->get();
@@ -41,7 +42,7 @@ class KeuanganController extends Controller
     public function create()
     {
         return view('keuangans.form', [
-            'keuangan' => new Keuangan(),
+            'keuangan' => new Keuangan,
             'kategoriPresets' => $this->kategoriPresets(),
         ]);
     }
@@ -73,6 +74,14 @@ class KeuanganController extends Controller
 
     public function edit(Keuangan $keuangan)
     {
+        if ($keuangan->payment_id !== null) {
+            return redirect()->route('keuangans.index')->withErrors([
+                'keuangan' => 'Pemasukan otomatis mengikuti pembayaran asal dan tidak dapat diubah dari buku Keuangan.',
+            ]);
+        }
+
+        $this->assertManuallyManaged($keuangan);
+
         return view('keuangans.form', [
             'keuangan' => $keuangan,
             'kategoriPresets' => $this->kategoriPresets(),
@@ -81,6 +90,8 @@ class KeuanganController extends Controller
 
     public function update(Request $request, Keuangan $keuangan)
     {
+        $this->assertManuallyManaged($keuangan);
+
         $validated = $request->validate([
             'tanggal' => ['required', 'date'],
             'jenis' => ['required', 'in:pemasukan,pengeluaran'],
@@ -111,6 +122,8 @@ class KeuanganController extends Controller
 
     public function destroy(Keuangan $keuangan)
     {
+        $this->assertManuallyManaged($keuangan);
+
         if ($keuangan->bukti_path) {
             Storage::disk('local')->delete($keuangan->bukti_path);
         }
@@ -139,5 +152,14 @@ class KeuanganController extends Controller
                 'Lain-lain Pengeluaran',
             ],
         ];
+    }
+
+    private function assertManuallyManaged(Keuangan $keuangan): void
+    {
+        if ($keuangan->payment_id !== null) {
+            throw ValidationException::withMessages([
+                'keuangan' => 'Pemasukan otomatis mengikuti pembayaran asal dan tidak dapat diubah atau dihapus dari buku Keuangan.',
+            ]);
+        }
     }
 }
