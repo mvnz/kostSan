@@ -18,6 +18,33 @@ class InvoiceController extends Controller
         return view('invoices.index', compact('invoices'));
     }
 
+    public function reconciliation(Request $request)
+    {
+        $filters = $request->validate(['kategori' => ['nullable', 'in:legacy,tanpa_invoice,tidak_sesuai']]);
+        $kategori = $filters['kategori'] ?? 'legacy';
+        $legacy = Invoice::query()->whereNull('payment_id')->where('keterangan', 'like', 'AUTO:%');
+        $missing = Pembayaran::query()->whereDoesntHave('invoice');
+        $mismatch = Invoice::query()->whereHas('payment', function ($payments): void {
+            $payments->where(function ($differences): void {
+                $differences->whereColumn('pembayarans.jumlah', '<>', 'invoices.jumlah_tagihan')
+                    ->orWhereColumn('pembayarans.periode', '<>', 'invoices.periode')
+                    ->orWhereHas('sewa', fn ($leases) => $leases->whereColumn('sewas.penghuni_id', '<>', 'invoices.penghuni_id'))
+                    ->orWhere(fn ($status) => $status->where('pembayarans.status', 'lunas')->where('invoices.status', '<>', 'lunas'))
+                    ->orWhere(fn ($status) => $status->where('pembayarans.status', '<>', 'lunas')->where('invoices.status', 'lunas'));
+            });
+        });
+        $counts = ['legacy' => (clone $legacy)->count(), 'tanpa_invoice' => (clone $missing)->count(), 'tidak_sesuai' => (clone $mismatch)->count()];
+        $records = match ($kategori) {
+            'tanpa_invoice' => $missing->with('sewa.penghuni', 'sewa.kamar')->orderBy('id')->paginate(25),
+            'tidak_sesuai' => $mismatch->with('penghuni', 'payment.sewa.kamar')->orderBy('id')->paginate(25),
+            default => $legacy->with('penghuni')->orderBy('id')->paginate(25),
+        };
+        $records->withQueryString();
+
+        return response()->view('invoices.reconciliation', compact('kategori', 'counts', 'records'))
+            ->header('Cache-Control', 'no-store, private');
+    }
+
     public function create()
     {
         return view('invoices.form', [

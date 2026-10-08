@@ -195,6 +195,7 @@ Route::get('secure-files/{path}', [SecureFileController::class, 'show'])->where(
 
 // Kontrak Sewa PDF
 Route::get('sewas/{sewa}/kontrak', [SewaController::class, 'kontrak'])->name('sewas.kontrak');
+Route::get('invoices/reconciliation', [InvoiceController::class, 'reconciliation'])->name('invoices.reconciliation');
 Route::resource('invoices', InvoiceController::class);
 Route::post('invoices/refresh-from-payments', [InvoiceController::class, 'refreshFromPayments'])->name('invoices.refresh-from-payments');
 Route::post('invoices/{invoice}/send', [InvoiceController::class, 'send'])->name('invoices.send');

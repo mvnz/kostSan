@@ -105,6 +105,7 @@ class CheckMenuPermission
         'pembayarans.bulk-billing.store'     => ['manajemen_sewa.data_sewa', 'create'],
 
         // Invoice
+        'invoices.reconciliation'            => ['keuangan.invoice', 'view'],
         'invoices.index'                     => ['keuangan.invoice', 'view'],
         'invoices.show'                      => ['keuangan.invoice', 'view'],
         'invoices.create'                    => ['keuangan.invoice', 'create'],

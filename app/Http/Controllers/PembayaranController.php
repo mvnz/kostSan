@@ -117,7 +117,14 @@ class PembayaranController extends Controller
             $validated['bukti_pembayaran_path'] = $request->file('bukti_pembayaran')->store('bukti-pembayaran-sewa', 'local');
         }
 
-        $pembayaran = Pembayaran::create($validated);
+        try {
+            DB::transaction(fn () => Pembayaran::create($validated));
+        } catch (\Throwable $exception) {
+            if (! empty($validated['bukti_pembayaran_path'])) {
+                Storage::disk('local')->delete($validated['bukti_pembayaran_path']);
+            }
+            throw $exception;
+        }
 
         return redirect()->route('pembayarans.index')->with('success', 'Data pembayaran berhasil ditambahkan dan menunggu approval pemilik.');
     }
@@ -147,20 +154,35 @@ class PembayaranController extends Controller
             'bukti_pembayaran' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:4096'],
         ]);
 
-        DB::transaction(function () use ($request, $pembayaran, $validated): void {
-            $pembayaran = Pembayaran::whereKey($pembayaran->id)->lockForUpdate()->firstOrFail();
-            $this->assertPaymentEditable($pembayaran);
-            $validated['status'] = 'belum_lunas';
+        $replacement = null;
+        $committed = false;
+        try {
+            DB::transaction(function () use ($request, $pembayaran, $validated, &$replacement, &$committed): void {
+                $payment = Pembayaran::whereKey($pembayaran->id)->lockForUpdate()->firstOrFail();
+                $this->assertPaymentEditable($payment);
+                $validated['status'] = 'belum_lunas';
 
-            if ($request->hasFile('bukti_pembayaran')) {
-                if ($pembayaran->bukti_pembayaran_path) {
-                    Storage::disk('local')->delete($pembayaran->bukti_pembayaran_path);
+                if ($request->hasFile('bukti_pembayaran')) {
+                    $replacement = $request->file('bukti_pembayaran')->store('bukti-pembayaran-sewa', 'local');
+                    $validated['bukti_pembayaran_path'] = $replacement;
+                    $oldProof = $payment->bukti_pembayaran_path;
+                    if ($oldProof) {
+                        DB::afterCommit(function () use ($oldProof, &$committed): void {
+                            $committed = true;
+                            Storage::disk('local')->delete($oldProof);
+                        });
+                    }
                 }
-                $validated['bukti_pembayaran_path'] = $request->file('bukti_pembayaran')->store('bukti-pembayaran-sewa', 'local');
-            }
 
-            $pembayaran->update($validated);
-        });
+                $payment->update($validated);
+            });
+        } catch (\Throwable $exception) {
+            if ($replacement && ! $committed) {
+                // A failed transaction must retain the previously committed proof.
+                Storage::disk('local')->delete($replacement);
+            }
+            throw $exception;
+        }
 
         return redirect()->route('pembayarans.index')->with('success', 'Data pembayaran berhasil diperbarui.');
     }
@@ -170,7 +192,11 @@ class PembayaranController extends Controller
         DB::transaction(function () use ($pembayaran): void {
             $payment = Pembayaran::whereKey($pembayaran->id)->lockForUpdate()->firstOrFail();
             $this->assertPaymentEditable($payment);
+            $oldProof = $payment->bukti_pembayaran_path;
             $payment->delete();
+            if ($oldProof) {
+                DB::afterCommit(fn () => Storage::disk('local')->delete($oldProof));
+            }
         });
 
         return redirect()->route('pembayarans.index')->with('success', 'Data pembayaran berhasil dihapus.');
