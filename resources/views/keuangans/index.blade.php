@@ -119,6 +119,8 @@ $pageTitle = 'Keuangan';
                         {{ $item->deskripsi ?: '-' }}
                         @if($item->payment_id)
                             <span class="badge bg-label-info d-block mt-1" style="width: fit-content;">Otomatis · Pembayaran #{{ $item->payment_id }}</span>
+                        @elseif($item->reversalSource)
+                            <span class="badge bg-label-warning d-block mt-1" style="width: fit-content;">Pembalikan · Pembayaran #{{ $item->reversalSource->payment_id }}</span>
                         @endif
                     </td>
                     <td>
@@ -132,9 +134,9 @@ $pageTitle = 'Keuangan';
                     </td>
                     <td>
                         <div class="d-flex align-items-center flex-wrap gap-1">
-                            @if($item->payment_id)
+                            @if($item->payment_id || $item->reversalSource)
                                 @canMenu('manajemen_sewa.data_sewa', 'view')
-                                <a href="{{ route('pembayarans.show', $item->payment_id) }}" class="btn btn-sm btn-action-detail">
+                                <a href="{{ route('pembayarans.show', $item->payment_id ?? $item->reversalSource->payment_id) }}" class="btn btn-sm btn-action-detail">
                                     <i class="icon-base bx bx-receipt me-1"></i>Pembayaran
                                 </a>
                                 @else

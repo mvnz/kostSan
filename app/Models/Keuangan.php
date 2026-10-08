@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Keuangan extends Model
 {
@@ -20,6 +21,11 @@ class Keuangan extends Model
     public function payment(): BelongsTo
     {
         return $this->belongsTo(Pembayaran::class, 'payment_id');
+    }
+
+    public function reversalSource(): HasOne
+    {
+        return $this->hasOne(PaymentReversal::class, 'reversal_entry_id');
     }
 
     protected $casts = [

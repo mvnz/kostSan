@@ -16,7 +16,7 @@ class KeuanganController extends Controller
 {
     public function index()
     {
-        $keuangans = Keuangan::with('payment')
+        $keuangans = Keuangan::with('payment', 'reversalSource')
             ->orderByDesc('tanggal')
             ->orderByDesc('id')
             ->get();
@@ -49,7 +49,7 @@ class KeuanganController extends Controller
             'bulan' => ['nullable', 'date_format:Y-m'],
             'jenis' => ['nullable', 'in:pemasukan,pengeluaran'],
         ]);
-        $query = Keuangan::query();
+        $query = Keuangan::with('reversalSource');
         if (! empty($filters['bulan'])) {
             $start = CarbonImmutable::createFromFormat('!Y-m', $filters['bulan']);
             $query->where('tanggal', '>=', $start->toDateString())
@@ -65,7 +65,9 @@ class KeuanganController extends Controller
             fputcsv($output, ['ID', 'Tanggal', 'Jenis', 'Kategori', 'Deskripsi', 'Jumlah', 'Sumber', 'ID Pembayaran'], ',', '"', '');
             $query->chunkById(200, function ($entries) use ($output): void {
                 foreach ($entries as $entry) {
-                    $row = [$entry->id, $entry->tanggal?->toDateString() ?? '', $entry->jenis, $entry->kategori, $entry->deskripsi, $entry->jumlah, $entry->payment_id ? 'otomatis' : 'manual', $entry->payment_id ?? ''];
+                    $source = $entry->payment_id ? 'otomatis' : ($entry->reversalSource ? 'pembalikan' : 'manual');
+                    $paymentId = $entry->payment_id ?? $entry->reversalSource?->payment_id ?? '';
+                    $row = [$entry->id, $entry->tanggal?->toDateString() ?? '', $entry->jenis, $entry->kategori, $entry->deskripsi, $entry->jumlah, $source, $paymentId];
                     $row = array_map(fn ($value) => preg_match('/^[\s]*[=+@-]/u', (string) $value) ? "'".$value : $value, $row);
                     fputcsv($output, $row, ',', '"', '');
                 }
@@ -155,7 +157,7 @@ class KeuanganController extends Controller
 
     public function show(Keuangan $keuangan)
     {
-        $keuangan->load('payment');
+        $keuangan->load('payment', 'reversalSource.payment');
 
         return response()->view('keuangans.show', compact('keuangan'))
             ->header('Cache-Control', 'no-store, private');
@@ -163,9 +165,9 @@ class KeuanganController extends Controller
 
     public function edit(Keuangan $keuangan)
     {
-        if ($keuangan->payment_id !== null) {
+        if ($keuangan->payment_id !== null || $keuangan->reversalSource()->exists()) {
             return redirect()->route('keuangans.index')->withErrors([
-                'keuangan' => 'Pemasukan otomatis mengikuti pembayaran asal dan tidak dapat diubah dari buku Keuangan.',
+                'keuangan' => 'Transaksi otomatis atau pembalikan mengikuti pembayaran asal dan tidak dapat diubah dari buku Keuangan.',
             ]);
         }
 
@@ -261,9 +263,9 @@ class KeuanganController extends Controller
 
     private function assertManuallyManaged(Keuangan $keuangan): void
     {
-        if ($keuangan->payment_id !== null) {
+        if ($keuangan->payment_id !== null || $keuangan->reversalSource()->exists()) {
             throw ValidationException::withMessages([
-                'keuangan' => 'Pemasukan otomatis mengikuti pembayaran asal dan tidak dapat diubah atau dihapus dari buku Keuangan.',
+                'keuangan' => 'Transaksi otomatis atau pembalikan mengikuti pembayaran asal dan tidak dapat diubah atau dihapus dari buku Keuangan.',
             ]);
         }
     }

@@ -98,7 +98,7 @@ Pendaftaran/pembayaran melalui link publik sekarang membersihkan unggahan baru b
 
 Detail Invoice dan Pembayaran sekarang dapat dibaca dengan hak Lihat masing-masing modul tanpa diarahkan ke halaman Edit. Tautan sumber lintas modul mengikuti izin; transaksi lunas/invoice otomatis tidak menawarkan edit terpisah. Laporan Keuangan HTML/PDF memvalidasi bulan dan tetap tepat saat tanggal sistem 31. Laporan Hunian menghitung kamar unik pada sebagian bulan, mengecualikan tanggal checkout, dan memvalidasi tahun/cakupan; rata-rata harian belum dicakup.
 
-Checkpoint kelanjutan terbaru: [9 Oktober — link bukti untuk tagihan existing](docs/reviews/2026-10-09-existing-bill-payment-link.md). Baca ini sebelum mengulang backlog.
+Checkpoint kelanjutan terbaru: [9 Oktober — pembalikan pembayaran](docs/reviews/2026-10-09-payment-reversal.md). Baca ini sebelum mengulang backlog.
 
 ## Cakupan pembayaran lewat link
 
@@ -121,3 +121,9 @@ Metrik menunjukkan kamar yang dihuni pada sebagian bulan, bukan rata-rata kamar 
 Operator dengan hak **Edit Data Sewa** membuka Detail Pembayaran pending lalu menekan **Buat link bukti**. Link berlaku tujuh hari dan satu kali pakai; pembuatan ulang menonaktifkan link lama yang belum dipakai. Kirim link hanya kepada penghuni terkait. Penghuni dapat memilih tunai atau transfer, mengunggah bukti, dan menambahkan keterangan. Transfer wajib memiliki bukti; tunai boleh tanpa unggahan.
 
 Link ini memperbarui tagihan existing tanpa membuat pembayaran/invoice kedua dan tidak menerima perubahan nominal, periode, cakupan, sewa, atau status dari browser. Status tetap menunggu approval pemilik. Tagihan lunas tidak dapat diberi/dipakai link. Penggantian bukti lama dilakukan setelah transaksi commit; kegagalan database/storage mempertahankan bukti/token lama agar aman dicoba ulang. Link seluruh-term dari halaman Sewa tetap untuk membuat tagihan baru bila belum ada cakupan; gunakan link Detail Pembayaran bila bulk/manual sudah membuat tagihan.
+
+## Pembalikan penuh pembayaran
+
+Untuk pembayaran lunas yang seluruh dananya dibatalkan/dikembalikan, buka Detail Pembayaran, isi tanggal serta alasan pada **Pembalikan penuh**, lalu konfirmasi. Sistem mempertahankan pembayaran, invoice lunas, dan pemasukan asli; satu pengeluaran **Pembalikan Pembayaran** dengan nominal sama ditambahkan agar saldo bersih nol. Pemasukan dan pengeluaran pembalikan tidak dapat diedit/dihapus. Detail, CSV, dan buku Keuangan menampilkan hubungan ke pembayaran asal.
+
+Pembalikan hanya tersedia bila pemasukan otomatis asal ada dan konsisten pada nominal, tanggal, jenis, serta kategori. Selesaikan halaman Rekonsiliasi bila ditolak. Tanggal harus dari tanggal bayar sampai hari ini menurut `APP_TIMEZONE` (default `Asia/Jakarta`). Retry tidak membuat pembalikan kedua. Fitur ini hanya mendukung pembalikan penuh; partial refund/cicilan belum didukung. Jangan gunakan penghapusan atau edit manual untuk mengoreksi transaksi lunas.

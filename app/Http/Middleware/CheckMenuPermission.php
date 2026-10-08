@@ -73,6 +73,7 @@ class CheckMenuPermission
         'pembayarans.update'                 => ['manajemen_sewa.data_sewa', 'update'],
         'pembayarans.destroy'                => ['manajemen_sewa.data_sewa', 'delete'],
         'pembayarans.approve'                => ['manajemen_sewa.data_sewa', 'update'],
+        'pembayarans.reverse'                => ['manajemen_sewa.data_sewa', 'update'],
 
         // Reservasi (bagian dari manajemen sewa)
         'reservasis.index'                   => ['manajemen_sewa.data_sewa', 'view'],

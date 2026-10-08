@@ -52,6 +52,11 @@ class Pembayaran extends Model
         return $this->hasOne(Keuangan::class, 'payment_id');
     }
 
+    public function reversal(): HasOne
+    {
+        return $this->hasOne(PaymentReversal::class, 'payment_id');
+    }
+
     public function syncInvoiceFromPayment(): void
     {
         $this->loadMissing('sewa.kamar', 'sewa.penghuni');

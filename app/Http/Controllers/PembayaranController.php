@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Kamar;
 use App\Models\Keuangan;
+use App\Models\PaymentReversal;
 use App\Models\Pembayaran;
 use App\Models\Sewa;
 use App\Services\BillingCoverage;
@@ -134,7 +135,7 @@ class PembayaranController extends Controller
 
     public function show(Pembayaran $pembayaran)
     {
-        $pembayaran->load('sewa.kamar', 'sewa.penghuni', 'ledgerEntry');
+        $pembayaran->load('sewa.kamar', 'sewa.penghuni', 'ledgerEntry', 'reversal.reversalEntry');
 
         return response()->view('pembayarans.show', compact('pembayaran'))
             ->header('Cache-Control', 'no-store, private');
@@ -279,6 +280,60 @@ class PembayaranController extends Controller
         }
 
         return back()->with('success', $approved ? 'Pembayaran disetujui dan pemasukan tercatat di buku Keuangan. Sewa yang sudah selesai tetap selesai.' : 'Pembayaran ini sudah disetujui sebelumnya.');
+    }
+
+    public function reverse(Request $request, Pembayaran $pembayaran)
+    {
+        $validated = $request->validate([
+            'reversal_date' => ['required', 'date', 'before_or_equal:today'],
+            'reason' => ['required', 'string', 'min:3', 'max:500'],
+        ]);
+
+        $created = DB::transaction(function () use ($pembayaran, $validated, $request): bool {
+            $payment = Pembayaran::whereKey($pembayaran->id)->lockForUpdate()->firstOrFail();
+            if ($payment->status !== 'lunas') {
+                throw ValidationException::withMessages(['pembayaran' => 'Hanya pembayaran yang sudah disetujui dapat dibalik.']);
+            }
+            if (PaymentReversal::where('payment_id', $payment->id)->exists()) {
+                return false;
+            }
+            $original = Keuangan::where('payment_id', $payment->id)->lockForUpdate()->first();
+            if (! $original) {
+                throw ValidationException::withMessages(['pembayaran' => 'Pemasukan asal tidak ditemukan. Selesaikan rekonsiliasi sebelum membuat pembalikan.']);
+            }
+            $ledgerMatches = $payment->tanggal_bayar
+                && $original->jenis === 'pemasukan'
+                && $original->kategori === 'Sewa Kamar'
+                && (string) $original->jumlah === (string) $payment->jumlah
+                && $original->tanggal?->equalTo($payment->tanggal_bayar);
+            if (! $ledgerMatches) {
+                throw ValidationException::withMessages(['pembayaran' => 'Pemasukan asal tidak konsisten dengan pembayaran. Selesaikan rekonsiliasi sebelum membuat pembalikan.']);
+            }
+            $reversalDate = Carbon::parse($validated['reversal_date'])->startOfDay();
+            if ($reversalDate->lessThan($payment->tanggal_bayar->startOfDay())) {
+                throw ValidationException::withMessages(['reversal_date' => 'Tanggal pembalikan tidak boleh sebelum tanggal pembayaran.']);
+            }
+            $reason = trim($validated['reason']);
+            $reversalEntry = Keuangan::create([
+                'tanggal' => $reversalDate->toDateString(),
+                'jenis' => 'pengeluaran',
+                'kategori' => 'Pembalikan Pembayaran',
+                'deskripsi' => sprintf('Pembalikan pembayaran #%d · %s', $payment->id, mb_strimwidth($reason, 0, 180, '…')),
+                'jumlah' => $original->jumlah,
+            ]);
+            PaymentReversal::create([
+                'payment_id' => $payment->id,
+                'original_entry_id' => $original->id,
+                'reversal_entry_id' => $reversalEntry->id,
+                'reversed_by' => $request->user()->id,
+                'reversal_date' => $reversalDate->toDateString(),
+                'reason' => $reason,
+            ]);
+
+            return true;
+        });
+
+        return back()->with('success', $created ? 'Pembalikan penuh dicatat sebagai pengeluaran tanpa menghapus pembayaran, invoice, atau pemasukan asal.' : 'Pembayaran ini sudah memiliki pembalikan. Tidak ada transaksi tambahan.');
     }
 
     private function billingPeriod(Request $request): Carbon

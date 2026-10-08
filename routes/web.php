@@ -175,6 +175,7 @@ Route::post('pembayarans/{pembayaran}/payment-link', [SewaPaymentRegistrationCon
 Route::get('pembayarans/export', [PembayaranController::class, 'export'])->name('pembayarans.export');
 Route::resource('pembayarans', PembayaranController::class);
 Route::post('pembayarans/{pembayaran}/approve', [PembayaranController::class, 'approve'])->name('pembayarans.approve');
+Route::post('pembayarans/{pembayaran}/reverse', [PembayaranController::class, 'reverse'])->name('pembayarans.reverse');
 Route::get('pembayarans-bulk', [PembayaranController::class, 'bulkBilling'])->name('pembayarans.bulk-billing');
 Route::post('pembayarans-bulk', [PembayaranController::class, 'storeBulkBilling'])->name('pembayarans.bulk-billing.store');
 Route::resource('reservasis', ReservasiController::class);
