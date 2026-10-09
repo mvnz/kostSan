@@ -53,7 +53,11 @@ class ReservasiController extends Controller
 
     public function show(Reservasi $reservasi)
     {
-        return redirect()->route('reservasis.edit', $reservasi);
+        $reservasi->load(['kamar', 'penghuni']);
+
+        return response()
+            ->view('reservasis.show', compact('reservasi'))
+            ->header('Cache-Control', 'no-store, private');
     }
 
     public function edit(Reservasi $reservasi)
