@@ -100,4 +100,122 @@ class FinanceReconciliationTest extends TestCase
         $this->get('/keuangans/reconciliation?bulan=2026-10')->assertOk()->assertViewHas('records', fn ($rows) => $rows->count() === 25 && $rows->total() === 26)->assertSee('page=2', false)->assertSee('bulan=2026-10', false);
         $this->get('/keuangans/reconciliation?bulan=2026-10&page=2')->assertOk()->assertViewHas('records', fn ($rows) => $rows->count() === 1);
     }
+
+    public function test_report_only_offers_strict_manual_income_candidates(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $payment = $this->payment();
+        $exact = Keuangan::create(['tanggal' => '2026-10-09', 'jenis' => 'pemasukan', 'kategori' => 'Sewa Kamar', 'deskripsi' => 'Transfer exact', 'jumlah' => 550000.25]);
+        foreach ([
+            ['tanggal' => '2026-10-10', 'jenis' => 'pemasukan', 'kategori' => 'Sewa Kamar', 'deskripsi' => 'Tanggal beda', 'jumlah' => 550000.25],
+            ['tanggal' => '2026-10-09', 'jenis' => 'pemasukan', 'kategori' => 'Sewa Kamar', 'deskripsi' => 'Nominal beda', 'jumlah' => 550000.26],
+            ['tanggal' => '2026-10-09', 'jenis' => 'pengeluaran', 'kategori' => 'Sewa Kamar', 'deskripsi' => 'Jenis beda', 'jumlah' => 550000.25],
+            ['tanggal' => '2026-10-09', 'jenis' => 'pemasukan', 'kategori' => 'Lain-lain Pemasukan', 'deskripsi' => 'Kategori beda', 'jumlah' => 550000.25],
+        ] as $attributes) {
+            Keuangan::create($attributes);
+        }
+        $this->assertTrue(Keuangan::whereNull('payment_id')->whereDate('tanggal', '2026-10-09')->exists());
+        $this->assertTrue(Keuangan::whereNull('payment_id')->whereDate('tanggal', '2026-10-09')->where('jumlah', '550000.25')->exists());
+        $this->assertTrue(Keuangan::whereNull('payment_id')->whereDate('tanggal', '2026-10-09')->where('jumlah', '550000.25')->where('jenis', 'pemasukan')->where('kategori', 'Sewa Kamar')->exists());
+        $this->assertTrue(Keuangan::whereNull('payment_id')->whereDate('tanggal', '2026-10-09')->where('jumlah', '550000.25')->where('jenis', 'pemasukan')->where('kategori', 'Sewa Kamar')->whereDoesntHave('reversalSource')->exists());
+
+        $this->get('/keuangans/reconciliation')->assertOk()
+            ->assertViewHas('candidates', fn ($rows) => $rows->flatten()->pluck('id')->all() === [$exact->id])
+            ->assertSee('Transfer exact')->assertDontSee('Tanggal beda')->assertDontSee('Nominal beda');
+    }
+
+    public function test_operator_can_auditably_link_and_unlink_an_exact_manual_income(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $payment = $this->payment();
+        $entry = Keuangan::create(['tanggal' => '2026-10-09', 'jenis' => 'pemasukan', 'kategori' => 'Sewa Kamar', 'deskripsi' => '<script>alert(1)</script>', 'jumlah' => 550000.25]);
+        $linkReason = 'Bukti transfer dan mutasi bank telah dicocokkan <script>alert(2)</script>';
+
+        $this->postJson('/keuangans/reconciliation/'.$payment->id.'/ledger-link', [
+            'keuangan_id' => $entry->id,
+            'reason' => 'pendek',
+        ])->assertUnprocessable()->assertJsonValidationErrors('reason');
+
+        $this->post('/keuangans/reconciliation/'.$payment->id.'/ledger-link', [
+            'keuangan_id' => $entry->id,
+            'reason' => $linkReason,
+        ])->assertRedirect('/keuangans/reconciliation');
+
+        $entry->refresh();
+        $this->assertSame($payment->id, $entry->payment_id);
+        $this->assertSame($user->id, $entry->manually_linked_by);
+        $this->assertNotNull($entry->manually_linked_at);
+        $this->assertDatabaseHas('finance_payment_link_audits', ['payment_id' => $payment->id, 'ledger_entry_id' => $entry->id, 'user_id' => $user->id, 'action' => 'linked', 'reason' => $linkReason]);
+        $this->get('/keuangans/'.$entry->id)->assertOk()->assertSee('Tautan rekonsiliasi manual')->assertDontSee('<script>alert(1)</script>', false);
+        $csv = $this->get('/keuangans/export')->assertOk()->streamedContent();
+        $this->assertStringContainsString('rekonsiliasi manual', $csv);
+        $this->assertStringContainsString(','.$payment->id, $csv);
+        $this->putJson('/keuangans/'.$entry->id, ['tanggal' => '2026-10-09', 'jenis' => 'pemasukan', 'kategori' => 'Sewa Kamar', 'deskripsi' => 'ubah', 'jumlah' => 550000.25])->assertUnprocessable();
+
+        $unlinkReason = 'Pilihan pemasukan perlu dikoreksi oleh operator';
+        $this->delete('/keuangans/reconciliation/'.$payment->id.'/ledger-link', ['reason' => $unlinkReason])->assertRedirect('/keuangans/'.$entry->id);
+        $entry->refresh();
+        $this->assertNull($entry->payment_id);
+        $this->assertNull($entry->manually_linked_by);
+        $this->assertNull($entry->manually_linked_at);
+        $this->assertDatabaseHas('finance_payment_link_audits', ['payment_id' => $payment->id, 'ledger_entry_id' => $entry->id, 'user_id' => $user->id, 'action' => 'unlinked', 'reason' => $unlinkReason]);
+        $this->assertDatabaseCount('finance_payment_link_audits', 2);
+        $this->assertDatabaseCount('keuangans', 1);
+        $this->get('/keuangans/'.$entry->id)->assertOk()->assertSee($linkReason)->assertSee($unlinkReason)->assertDontSee('<script>alert(2)</script>', false);
+        $this->get('/pembayarans/'.$payment->id)->assertOk()->assertSee($linkReason)->assertSee($unlinkReason)->assertDontSee('<script>alert(2)</script>', false);
+    }
+
+    public function test_manual_link_rejects_mismatch_reuse_and_automatic_income_detach(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $first = $this->payment();
+        $second = $this->payment();
+        $wrong = Keuangan::create(['tanggal' => '2026-10-09', 'jenis' => 'pemasukan', 'kategori' => 'Sewa Kamar', 'deskripsi' => 'Nominal beda', 'jumlah' => 1]);
+        $payload = ['keuangan_id' => $wrong->id, 'reason' => 'Pencocokan manual sintetis yang cukup panjang'];
+
+        $this->postJson('/keuangans/reconciliation/'.$first->id.'/ledger-link', $payload)->assertUnprocessable()->assertJsonValidationErrors('keuangan_id');
+        $wrong->update(['jumlah' => 550000.25]);
+        $this->post('/keuangans/reconciliation/'.$first->id.'/ledger-link', $payload)->assertRedirect();
+        $this->postJson('/keuangans/reconciliation/'.$second->id.'/ledger-link', $payload)->assertUnprocessable()->assertJsonValidationErrors('keuangan_id');
+
+        $automatic = $this->ledger($second);
+        $this->deleteJson('/keuangans/reconciliation/'.$second->id.'/ledger-link', ['reason' => 'Tidak boleh melepas pemasukan approval otomatis'])->assertUnprocessable()->assertJsonValidationErrors('keuangan');
+        $this->assertSame($second->id, $automatic->fresh()->payment_id);
+    }
+
+    public function test_manual_link_requires_update_permissions_for_finance_and_payment(): void
+    {
+        $payment = $this->payment();
+        $entry = Keuangan::create(['tanggal' => '2026-10-09', 'jenis' => 'pemasukan', 'kategori' => 'Sewa Kamar', 'deskripsi' => 'Manual', 'jumlah' => 550000.25]);
+        $payload = ['keuangan_id' => $entry->id, 'reason' => 'Pencocokan manual sintetis yang cukup panjang'];
+        foreach ([
+            ['keuangan.data_keuangan' => ['view', 'update'], 'manajemen_sewa.data_sewa' => ['view']],
+            ['keuangan.data_keuangan' => ['view'], 'manajemen_sewa.data_sewa' => ['view', 'update']],
+        ] as $permissions) {
+            $role = Role::create(['name' => 'Matcher '.Role::count(), 'menu_permissions' => $permissions]);
+            $this->actingAs(User::factory()->create(['role_id' => $role->id]))
+                ->postJson('/keuangans/reconciliation/'.$payment->id.'/ledger-link', $payload)->assertForbidden();
+        }
+        $this->assertNull($entry->fresh()->payment_id);
+    }
+
+    public function test_manual_link_audit_failure_rolls_back_the_association(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $payment = $this->payment();
+        $entry = Keuangan::create(['tanggal' => '2026-10-09', 'jenis' => 'pemasukan', 'kategori' => 'Sewa Kamar', 'deskripsi' => 'Manual', 'jumlah' => 550000.25]);
+        DB::statement("CREATE TRIGGER fail_manual_link_audit BEFORE INSERT ON finance_payment_link_audits BEGIN SELECT RAISE(ABORT, 'synthetic audit failure'); END");
+
+        $this->postJson('/keuangans/reconciliation/'.$payment->id.'/ledger-link', [
+            'keuangan_id' => $entry->id,
+            'reason' => 'Pencocokan manual sintetis yang cukup panjang',
+        ])->assertStatus(500);
+
+        $entry->refresh();
+        $this->assertNull($entry->payment_id);
+        $this->assertNull($entry->manually_linked_at);
+        $this->assertNull($entry->manually_linked_by);
+        $this->assertDatabaseCount('finance_payment_link_audits', 0);
+    }
 }

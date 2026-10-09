@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Keuangan;
+use App\Models\FinancePaymentLinkAudit;
 use App\Models\Pembayaran;
 use App\Services\PrivateUpload;
 use Carbon\Carbon;
@@ -65,7 +66,7 @@ class KeuanganController extends Controller
             fputcsv($output, ['ID', 'Tanggal', 'Jenis', 'Kategori', 'Deskripsi', 'Jumlah', 'Sumber', 'ID Pembayaran'], ',', '"', '');
             $query->chunkById(200, function ($entries) use ($output): void {
                 foreach ($entries as $entry) {
-                    $source = $entry->payment_id ? 'otomatis' : ($entry->reversalSource ? 'pembalikan' : 'manual');
+                    $source = $entry->manually_linked_at ? 'rekonsiliasi manual' : ($entry->payment_id ? 'otomatis' : ($entry->reversalSource ? 'pembalikan' : 'manual'));
                     $paymentId = $entry->payment_id ?? $entry->reversalSource?->payment_id ?? '';
                     $row = [$entry->id, $entry->tanggal?->toDateString() ?? '', $entry->jenis, $entry->kategori, $entry->deskripsi, $entry->jumlah, $source, $paymentId];
                     $row = array_map(fn ($value) => preg_match('/^[\s]*[=+@-]/u', (string) $value) ? "'".$value : $value, $row);
@@ -115,9 +116,105 @@ class KeuanganController extends Controller
         $counts = ['tanpa_pemasukan' => (clone $missing)->count(), 'tidak_sesuai' => (clone $mismatch)->count()];
         $records = ($kategori === 'tidak_sesuai' ? $mismatch : $missing)
             ->with('sewa.penghuni', 'sewa.kamar', 'ledgerEntry')->orderBy('id')->paginate(25)->withQueryString();
+        $candidates = collect();
+        if ($kategori === 'tanpa_pemasukan') {
+            foreach ($records as $payment) {
+                $candidates[$payment->id] = $payment->tanggal_bayar
+                    ? $this->manualIncomeCandidates($payment)->get()
+                    : collect();
+            }
+        }
 
-        return response()->view('keuangans.reconciliation', compact('kategori', 'bulan', 'counts', 'records'))
+        return response()->view('keuangans.reconciliation', compact('kategori', 'bulan', 'counts', 'records', 'candidates'))
             ->header('Cache-Control', 'no-store, private');
+    }
+
+    public function attachManualIncome(Request $request, Pembayaran $pembayaran)
+    {
+        abort_unless($request->user()->hasMenuPermission('manajemen_sewa.data_sewa', 'update'), 403);
+        $validated = $request->validate([
+            'keuangan_id' => ['required', 'integer', 'exists:keuangans,id'],
+            'reason' => ['required', 'string', 'min:10', 'max:500'],
+            'bulan' => ['nullable', 'date_format:Y-m'],
+        ]);
+
+        DB::transaction(function () use ($request, $pembayaran, $validated): void {
+            $payment = Pembayaran::whereKey($pembayaran->id)->lockForUpdate()->firstOrFail();
+            $entry = Keuangan::whereKey($validated['keuangan_id'])->lockForUpdate()->firstOrFail();
+            if ($payment->status !== 'lunas' || $payment->ledgerEntry()->exists() || ! $this->manualIncomeMatches($payment, $entry)) {
+                throw ValidationException::withMessages([
+                    'keuangan_id' => 'Pemasukan tidak tersedia atau tidak persis cocok pada tanggal, nominal, jenis, dan kategori pembayaran.',
+                ]);
+            }
+
+            $entry->update([
+                'payment_id' => $payment->id,
+                'manually_linked_at' => now(),
+                'manually_linked_by' => $request->user()->id,
+            ]);
+            FinancePaymentLinkAudit::create([
+                'payment_id' => $payment->id,
+                'ledger_entry_id' => $entry->id,
+                'user_id' => $request->user()->id,
+                'action' => 'linked',
+                'reason' => $validated['reason'],
+            ]);
+        });
+
+        return redirect()->route('keuangans.reconciliation', array_filter(['bulan' => $validated['bulan'] ?? null]))
+            ->with('success', 'Pemasukan manual ditautkan ke pembayaran dan jejak audit disimpan.');
+    }
+
+    public function detachManualIncome(Request $request, Pembayaran $pembayaran)
+    {
+        abort_unless($request->user()->hasMenuPermission('manajemen_sewa.data_sewa', 'update'), 403);
+        $validated = $request->validate(['reason' => ['required', 'string', 'min:10', 'max:500']]);
+        $entryId = DB::transaction(function () use ($request, $pembayaran, $validated): int {
+            $payment = Pembayaran::whereKey($pembayaran->id)->lockForUpdate()->firstOrFail();
+            $entry = Keuangan::where('payment_id', $payment->id)->lockForUpdate()->first();
+            if (! $entry || ! $entry->manually_linked_at) {
+                throw ValidationException::withMessages([
+                    'keuangan' => 'Hanya tautan rekonsiliasi manual yang dapat dilepas. Pemasukan dari approval tetap immutable.',
+                ]);
+            }
+
+            FinancePaymentLinkAudit::create([
+                'payment_id' => $payment->id,
+                'ledger_entry_id' => $entry->id,
+                'user_id' => $request->user()->id,
+                'action' => 'unlinked',
+                'reason' => $validated['reason'],
+            ]);
+            $entry->update(['payment_id' => null, 'manually_linked_at' => null, 'manually_linked_by' => null]);
+
+            return $entry->id;
+        });
+
+        return redirect()->route('keuangans.show', $entryId)
+            ->with('success', 'Tautan manual dilepas tanpa menghapus pembayaran atau pemasukan; jejak audit dipertahankan.');
+    }
+
+    private function manualIncomeCandidates(Pembayaran $payment)
+    {
+        return Keuangan::query()
+            ->whereNull('payment_id')
+            ->whereDate('tanggal', $payment->tanggal_bayar->toDateString())
+            ->where('jumlah', $payment->jumlah)
+            ->where('jenis', 'pemasukan')
+            ->where('kategori', 'Sewa Kamar')
+            ->whereDoesntHave('reversalSource')
+            ->orderBy('id');
+    }
+
+    private function manualIncomeMatches(Pembayaran $payment, Keuangan $entry): bool
+    {
+        return $payment->tanggal_bayar !== null
+            && $entry->payment_id === null
+            && ! $entry->reversalSource()->exists()
+            && $entry->jenis === 'pemasukan'
+            && $entry->kategori === 'Sewa Kamar'
+            && (string) $entry->jumlah === (string) $payment->jumlah
+            && $entry->tanggal?->equalTo($payment->tanggal_bayar);
     }
 
     public function create()
@@ -157,7 +254,7 @@ class KeuanganController extends Controller
 
     public function show(Keuangan $keuangan)
     {
-        $keuangan->load('payment', 'reversalSource.payment');
+        $keuangan->load('payment', 'reversalSource.payment', 'linkAudits.user');
 
         return response()->view('keuangans.show', compact('keuangan'))
             ->header('Cache-Control', 'no-store, private');

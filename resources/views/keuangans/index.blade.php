@@ -117,7 +117,9 @@ $pageTitle = 'Keuangan';
                     <td>Rp {{ number_format((float)$item->jumlah,0,',','.') }}</td>
                     <td>
                         {{ $item->deskripsi ?: '-' }}
-                        @if($item->payment_id)
+                        @if($item->manually_linked_at)
+                            <span class="badge bg-label-warning d-block mt-1" style="width: fit-content;">Rekonsiliasi manual · Pembayaran #{{ $item->payment_id }}</span>
+                        @elseif($item->payment_id)
                             <span class="badge bg-label-info d-block mt-1" style="width: fit-content;">Otomatis · Pembayaran #{{ $item->payment_id }}</span>
                         @elseif($item->reversalSource)
                             <span class="badge bg-label-warning d-block mt-1" style="width: fit-content;">Pembalikan · Pembayaran #{{ $item->reversalSource->payment_id }}</span>
@@ -140,7 +142,7 @@ $pageTitle = 'Keuangan';
                                     <i class="icon-base bx bx-receipt me-1"></i>Pembayaran
                                 </a>
                                 @else
-                                <span class="text-body-secondary small">Sumber otomatis</span>
+                                <span class="text-body-secondary small">{{ $item->manually_linked_at ? 'Rekonsiliasi manual' : ($item->reversalSource ? 'Pembalikan otomatis' : 'Sumber otomatis') }}</span>
                                 @endCanMenu
                             @else
                                 <a href="{{ route('keuangans.show', $item) }}" class="btn btn-sm btn-action-detail">

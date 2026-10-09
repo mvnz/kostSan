@@ -181,6 +181,8 @@ Route::post('pembayarans-bulk', [PembayaranController::class, 'storeBulkBilling'
 Route::resource('reservasis', ReservasiController::class);
 Route::get('keuangans/export', [KeuanganController::class, 'export'])->name('keuangans.export');
 Route::get('keuangans/reconciliation', [KeuanganController::class, 'reconciliation'])->name('keuangans.reconciliation');
+Route::post('keuangans/reconciliation/{pembayaran}/ledger-link', [KeuanganController::class, 'attachManualIncome'])->name('keuangans.reconciliation.attach');
+Route::delete('keuangans/reconciliation/{pembayaran}/ledger-link', [KeuanganController::class, 'detachManualIncome'])->name('keuangans.reconciliation.detach');
 Route::resource('keuangans', KeuanganController::class);
 Route::get('laporan-keuangan', [LaporanKeuanganController::class, 'index'])->name('laporan-keuangan.index');
 Route::get('laporan-keuangan/pdf', [LaporanKeuanganController::class, 'pdf'])->name('laporan-keuangan.pdf');

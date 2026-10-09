@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
 class Pembayaran extends Model
@@ -56,6 +57,11 @@ class Pembayaran extends Model
     public function reversal(): HasOne
     {
         return $this->hasOne(PaymentReversal::class, 'payment_id');
+    }
+
+    public function linkAudits(): HasMany
+    {
+        return $this->hasMany(FinancePaymentLinkAudit::class, 'payment_id');
     }
 
     public function syncInvoiceFromPayment(): void

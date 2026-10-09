@@ -41,4 +41,7 @@
 </form></div></div>
 @endCanMenu
 @endif
+@if($pembayaran->linkAudits->isNotEmpty())
+<div class="card mt-3"><div class="card-body"><h5>Riwayat rekonsiliasi pemasukan manual</h5><div class="table-responsive"><table class="table"><thead><tr><th>Waktu</th><th>Aksi</th><th>Keuangan</th><th>Operator</th><th>Alasan</th></tr></thead><tbody>@foreach($pembayaran->linkAudits->sortBy('id') as $audit)<tr><td>{{ $audit->created_at?->format('d/m/Y H:i') }}</td><td>{{ $audit->action === 'linked' ? 'Ditautkan' : 'Dilepas' }}</td><td>@if($audit->ledgerEntry)<a href="{{ route('keuangans.show', $audit->ledgerEntry) }}">#{{ $audit->ledger_entry_id }}</a>@else Transaksi dihapus @endif</td><td>{{ $audit->user?->name ?? 'Pengguna dihapus' }}</td><td class="text-break">{{ $audit->reason }}</td></tr>@endforeach</tbody></table></div></div></div>
+@endif
 @endsection

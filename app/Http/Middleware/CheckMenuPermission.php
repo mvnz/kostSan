@@ -87,6 +87,8 @@ class CheckMenuPermission
         // Keuangan
         'keuangans.export'                   => ['keuangan.data_keuangan', 'view'],
         'keuangans.reconciliation'           => ['keuangan.data_keuangan', 'view'],
+        'keuangans.reconciliation.attach'    => ['keuangan.data_keuangan', 'update'],
+        'keuangans.reconciliation.detach'    => ['keuangan.data_keuangan', 'update'],
         'keuangans.index'                    => ['keuangan.data_keuangan', 'view'],
         'keuangans.show'                     => ['keuangan.data_keuangan', 'view'],
         'keuangans.create'                   => ['keuangan.data_keuangan', 'create'],

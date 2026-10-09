@@ -154,7 +154,7 @@ class PembayaranController extends Controller
 
     public function show(Pembayaran $pembayaran)
     {
-        $pembayaran->load('sewa.kamar', 'sewa.penghuni', 'ledgerEntry', 'reversal.reversalEntry');
+        $pembayaran->load('sewa.kamar', 'sewa.penghuni', 'ledgerEntry', 'reversal.reversalEntry', 'linkAudits.user', 'linkAudits.ledgerEntry');
 
         return response()->view('pembayarans.show', compact('pembayaran'))
             ->header('Cache-Control', 'no-store, private');
