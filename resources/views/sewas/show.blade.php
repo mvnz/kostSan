@@ -17,16 +17,20 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5 class="mb-0">Informasi Sewa</h5>
                 <div class="d-flex gap-2">
+                    @canMenu('manajemen_sewa.data_sewa', 'update')
                     <a href="{{ route('sewas.edit', $sewa) }}" class="btn btn-sm btn-primary">
                         <i class="bx bx-edit me-1"></i>Edit
                     </a>
+                    @endCanMenu
                     @if($sewa->pembayarans->isEmpty())
+                    @canMenu('manajemen_sewa.data_sewa', 'delete')
                     <form method="POST" action="{{ route('sewas.destroy', $sewa) }}" onsubmit="return confirm('Hapus sewa ini?')" class="d-inline">
                         @csrf @method('DELETE')
                         <button type="submit" class="btn btn-sm btn-outline-danger">
                             <i class="bx bx-trash me-1"></i>Hapus
                         </button>
                     </form>
+                    @endCanMenu
                     @else
                     <span class="badge bg-label-secondary" title="Sewa dengan riwayat pembayaran tidak dapat dihapus">Riwayat pembayaran tersimpan</span>
                     @endif
@@ -89,6 +93,14 @@
                     <div class="col-6 col-md-4">
                         <small class="text-body-secondary d-block" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;font-weight:600">Total Tagihan</small>
                         <strong class="text-primary">Rp {{ number_format($total,0,',','.') }}</strong>
+                    </div>
+                    <div class="col-12">
+                        <small class="text-body-secondary d-block" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;font-weight:600">Bukti Sewa</small>
+                        @if($sewa->bukti_pembayaran)
+                            <a href="{{ route('secure-files.show', ['path' => $sewa->bukti_pembayaran]) }}" target="_blank" rel="noopener">Lihat bukti privat</a>
+                        @else
+                            <span>Belum ada bukti</span>
+                        @endif
                     </div>
                     @if($sewa->catatan)
                     <div class="col-12">
