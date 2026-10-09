@@ -110,11 +110,13 @@ Data sewa yang sudah memiliki riwayat pembayaran tidak dapat dihapus. Tombol hap
 
 Detail Sewa dapat dibuka oleh operator dengan hak **Lihat Data Sewa** untuk menelusuri bukti melalui endpoint privat. Tombol Edit/Hapus hanya dirender bila hak terkait tersedia; request mutasi langsung tetap ditolak middleware. Pengguna tanpa hak lihat tidak dapat membuka detail maupun file bukti.
 
+Menu Penghuni juga memiliki halaman detail read-only terpisah dari form edit. Operator dengan hak **Lihat Data Penghuni** dapat memeriksa identitas, kontak darurat, kendaraan, ringkasan relasi, foto KTP, dan selfie privat tanpa memperoleh aksi mutasi. Halaman sensitif memakai `no-store`; output teks di-escape dan file tetap dilayani lewat pemeriksaan izin.
+
 Saat data penghuni yang sudah tidak memiliki relasi sewa/reservasi/invoice dihapus, foto KTP dan selfie privat dibersihkan setelah delete database berhasil commit. Kegagalan database mempertahankan record serta dokumen; kegagalan storage setelah commit memasukkan masing-masing dokumen ke antrean cleanup tanpa membatalkan penghapusan record.
 
 Detail Invoice dan Pembayaran sekarang dapat dibaca dengan hak Lihat masing-masing modul tanpa diarahkan ke halaman Edit. Tautan sumber lintas modul mengikuti izin; transaksi lunas/invoice otomatis tidak menawarkan edit terpisah. Laporan Keuangan HTML/PDF memvalidasi bulan dan tetap tepat saat tanggal sistem 31. Laporan Hunian menghitung kamar unik pada sebagian bulan, mengecualikan tanggal checkout, dan memvalidasi tahun/cakupan; rata-rata harian belum dicakup.
 
-Checkpoint kelanjutan terbaru: [Detail sewa read-only](docs/reviews/2026-10-10-lease-detail-access.md). Baca juga [perlindungan histori sewa](docs/reviews/2026-10-10-lease-history-preservation.md), [cleanup dokumen penghuni](docs/reviews/2026-10-10-resident-document-cleanup.md), [integritas bukti sewa](docs/reviews/2026-10-10-lease-proof-integrity.md), dan [peringatan antrean file privat](docs/reviews/2026-10-10-cleanup-dashboard-alert.md) sebelum mengulang backlog.
+Checkpoint kelanjutan terbaru: [Detail penghuni read-only](docs/reviews/2026-10-10-resident-detail-access.md). Baca juga [detail sewa read-only](docs/reviews/2026-10-10-lease-detail-access.md), [perlindungan histori sewa](docs/reviews/2026-10-10-lease-history-preservation.md), [cleanup dokumen penghuni](docs/reviews/2026-10-10-resident-document-cleanup.md), dan [integritas bukti sewa](docs/reviews/2026-10-10-lease-proof-integrity.md) sebelum mengulang backlog.
 
 ## Cakupan pembayaran lewat link
 

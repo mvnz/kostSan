@@ -60,7 +60,11 @@ class PenghuniController extends Controller
 
     public function show(Penghuni $penghuni)
     {
-        return redirect()->route('penghunis.edit', $penghuni);
+        $penghuni->loadCount(['sewas', 'reservasis', 'invoices']);
+
+        return response()
+            ->view('penghunis.show', compact('penghuni'))
+            ->header('Cache-Control', 'no-store, private');
     }
 
     public function edit(Penghuni $penghuni)
