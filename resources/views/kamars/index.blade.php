@@ -88,10 +88,14 @@ $pageTitle = 'Kamar';
                             </a>
                             @endCanMenu
                             @canMenu('master_data.data_kamar', 'delete')
+                            @if(($kamar->sewas_count + $kamar->reservasis_count) === 0)
                             <form method="POST" action="{{ route('kamars.destroy', $kamar) }}" onsubmit="return confirm('Hapus kamar ini?')" class="d-inline">
                                 @csrf @method('DELETE')
                                 <button type="submit" class="btn btn-sm btn-action-danger"><i class="icon-base bx bx-trash me-1"></i>Delete</button>
                             </form>
+                            @else
+                            <span class="badge bg-label-secondary" title="Kamar dengan histori sewa/reservasi tidak dapat dihapus">Riwayat tersimpan</span>
+                            @endif
                             @endCanMenu
                         </div>
                     </td>

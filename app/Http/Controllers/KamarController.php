@@ -19,7 +19,7 @@ class KamarController extends Controller
     {
         KamarFloor::syncFromKamars();
 
-        $kamars = Kamar::orderBy('nomor')->get();
+        $kamars = Kamar::withCount(['sewas', 'reservasis'])->orderBy('nomor')->get();
         $floorsByNumber = KamarFloor::orderBy('number')->pluck('name', 'number');
 
         return view('kamars.index', compact('kamars', 'floorsByNumber'));
@@ -76,7 +76,9 @@ class KamarController extends Controller
 
     public function show(Kamar $kamar)
     {
-        return redirect()->route('kamars.edit', $kamar);
+        $kamar->loadCount(['sewas', 'reservasis']);
+
+        return view('kamars.show', compact('kamar'));
     }
 
     public function edit(Kamar $kamar)
@@ -179,7 +181,22 @@ class KamarController extends Controller
 
     public function destroy(Kamar $kamar)
     {
-        $kamar->delete();
+        $deleted = DB::transaction(function () use ($kamar): bool {
+            $kamar = Kamar::whereKey($kamar->id)->lockForUpdate()->firstOrFail();
+            if ($kamar->sewas()->exists() || $kamar->reservasis()->exists()) {
+                return false;
+            }
+
+            $kamar->delete();
+
+            return true;
+        });
+
+        if (! $deleted) {
+            return redirect()
+                ->route('kamars.index')
+                ->with('error', 'Kamar tidak dapat dihapus karena memiliki histori sewa atau reservasi. Pertahankan data untuk audit operasional.');
+        }
 
         return redirect()->route('kamars.index')->with('success', 'Data kamar berhasil dihapus.');
     }
