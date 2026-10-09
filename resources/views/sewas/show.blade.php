@@ -20,12 +20,16 @@
                     <a href="{{ route('sewas.edit', $sewa) }}" class="btn btn-sm btn-primary">
                         <i class="bx bx-edit me-1"></i>Edit
                     </a>
+                    @if($sewa->pembayarans->isEmpty())
                     <form method="POST" action="{{ route('sewas.destroy', $sewa) }}" onsubmit="return confirm('Hapus sewa ini?')" class="d-inline">
                         @csrf @method('DELETE')
                         <button type="submit" class="btn btn-sm btn-outline-danger">
                             <i class="bx bx-trash me-1"></i>Hapus
                         </button>
                     </form>
+                    @else
+                    <span class="badge bg-label-secondary" title="Sewa dengan riwayat pembayaran tidak dapat dihapus">Riwayat pembayaran tersimpan</span>
+                    @endif
                 </div>
             </div>
             <div class="card-body">

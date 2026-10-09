@@ -2,10 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\Invoice;
 use App\Models\Kamar;
+use App\Models\Keuangan;
+use App\Models\Pembayaran;
 use App\Models\Penghuni;
 use App\Models\Sewa;
 use App\Models\User;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -89,5 +93,69 @@ class LeaseFileAtomicityTest extends TestCase
         $this->assertDatabaseMissing('sewas', ['id' => $lease->id]);
         Storage::disk('local')->assertMissing('bukti-sewa/original.pdf');
         $this->assertSame('tersedia', $this->room->fresh()->status);
+    }
+
+    public function test_lease_with_payment_history_cannot_be_deleted_or_cascade_financial_records(): void
+    {
+        $lease = $this->lease();
+        $this->room->update(['status' => 'terisi']);
+        Storage::disk('local')->put('bukti-pembayaran-sewa/history.pdf', 'synthetic payment');
+        $payment = Pembayaran::create([
+            'sewa_id' => $lease->id,
+            'periode' => '2026-10-01',
+            'tanggal_bayar' => '2026-10-02',
+            'metode' => 'transfer',
+            'jumlah' => 550000,
+            'status' => 'lunas',
+            'bukti_pembayaran_path' => 'bukti-pembayaran-sewa/history.pdf',
+        ]);
+        $invoice = Invoice::where('payment_id', $payment->id)->sole();
+        $ledger = Keuangan::create([
+            'payment_id' => $payment->id,
+            'tanggal' => '2026-10-02',
+            'jenis' => 'pemasukan',
+            'kategori' => 'Sewa Kamar',
+            'deskripsi' => 'Synthetic approved payment',
+            'jumlah' => 550000,
+        ]);
+
+        $this->get('/sewas/'.$lease->id)
+            ->assertOk()
+            ->assertSee('Riwayat pembayaran tersimpan')
+            ->assertDontSee('action="'.route('sewas.destroy', $lease).'"', false);
+
+        $this->delete('/sewas/'.$lease->id)
+            ->assertRedirect('/sewas')
+            ->assertSessionHas('error');
+
+        $this->assertDatabaseHas('sewas', ['id' => $lease->id]);
+        $this->assertDatabaseHas('pembayarans', ['id' => $payment->id]);
+        $this->assertDatabaseHas('invoices', ['id' => $invoice->id, 'payment_id' => $payment->id]);
+        $this->assertDatabaseHas('keuangans', ['id' => $ledger->id, 'payment_id' => $payment->id]);
+        Storage::disk('local')->assertExists('bukti-sewa/original.pdf');
+        Storage::disk('local')->assertExists('bukti-pembayaran-sewa/history.pdf');
+        $this->assertSame('terisi', $this->room->fresh()->status);
+    }
+
+    public function test_database_restricts_direct_lease_delete_when_payment_exists(): void
+    {
+        $lease = $this->lease();
+        $payment = Pembayaran::create([
+            'sewa_id' => $lease->id,
+            'periode' => '2026-10-01',
+            'metode' => 'cash',
+            'jumlah' => 550000,
+            'status' => 'belum_lunas',
+        ]);
+
+        try {
+            DB::table('sewas')->where('id', $lease->id)->delete();
+            $this->fail('Database allowed a lease with payment history to be deleted.');
+        } catch (QueryException) {
+            // Expected: the database is the final guard against financial-history cascade.
+        }
+
+        $this->assertDatabaseHas('sewas', ['id' => $lease->id]);
+        $this->assertDatabaseHas('pembayarans', ['id' => $payment->id]);
     }
 }

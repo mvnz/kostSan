@@ -106,11 +106,13 @@ Pendaftaran/pembayaran melalui link publik sekarang membersihkan unggahan baru b
 
 Bukti pada Data Sewa mengikuti jaminan yang sama: create/update ditolak bila storage gagal, upload baru dibersihkan bila transaksi database rollback, dan bukti lama hanya dihapus setelah update/delete berhasil commit. Jika penghapusan fisik gagal setelah commit, path masuk antrean cleanup dan muncul sebagai ringkasan alarm Dashboard.
 
+Data sewa yang sudah memiliki riwayat pembayaran tidak dapat dihapus. Tombol hapus diganti penanda riwayat pada daftar/detail, endpoint memeriksa ulang di dalam transaksi dengan row lock, dan foreign key payment→sewa memakai `RESTRICT` sebagai pertahanan database. Perlindungan ini mencegah cascade menghilangkan pembayaran, invoice, pemasukan, link, serta bukti transaksi; gunakan status selesai dan pembalikan pembayaran untuk koreksi yang perlu mempertahankan audit.
+
 Saat data penghuni yang sudah tidak memiliki relasi sewa/reservasi/invoice dihapus, foto KTP dan selfie privat dibersihkan setelah delete database berhasil commit. Kegagalan database mempertahankan record serta dokumen; kegagalan storage setelah commit memasukkan masing-masing dokumen ke antrean cleanup tanpa membatalkan penghapusan record.
 
 Detail Invoice dan Pembayaran sekarang dapat dibaca dengan hak Lihat masing-masing modul tanpa diarahkan ke halaman Edit. Tautan sumber lintas modul mengikuti izin; transaksi lunas/invoice otomatis tidak menawarkan edit terpisah. Laporan Keuangan HTML/PDF memvalidasi bulan dan tetap tepat saat tanggal sistem 31. Laporan Hunian menghitung kamar unik pada sebagian bulan, mengecualikan tanggal checkout, dan memvalidasi tahun/cakupan; rata-rata harian belum dicakup.
 
-Checkpoint kelanjutan terbaru: [Cleanup dokumen penghuni](docs/reviews/2026-10-10-resident-document-cleanup.md). Baca juga [integritas bukti sewa](docs/reviews/2026-10-10-lease-proof-integrity.md), [peringatan antrean file privat](docs/reviews/2026-10-10-cleanup-dashboard-alert.md), [redaksi token log aktivitas](docs/reviews/2026-10-09-activity-log-redaction.md), dan [antrean pembersihan file privat](docs/reviews/2026-10-09-private-file-cleanup.md) sebelum mengulang backlog.
+Checkpoint kelanjutan terbaru: [Perlindungan histori sewa](docs/reviews/2026-10-10-lease-history-preservation.md). Baca juga [cleanup dokumen penghuni](docs/reviews/2026-10-10-resident-document-cleanup.md), [integritas bukti sewa](docs/reviews/2026-10-10-lease-proof-integrity.md), [peringatan antrean file privat](docs/reviews/2026-10-10-cleanup-dashboard-alert.md), dan [redaksi token log aktivitas](docs/reviews/2026-10-09-activity-log-redaction.md) sebelum mengulang backlog.
 
 ## Cakupan pembayaran lewat link
 

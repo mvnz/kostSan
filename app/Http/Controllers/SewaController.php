@@ -201,8 +201,11 @@ class SewaController extends Controller
 
     public function destroy(Sewa $sewa)
     {
-        DB::transaction(function () use ($sewa): void {
+        $deleted = DB::transaction(function () use ($sewa): bool {
             $sewa = Sewa::whereKey($sewa->id)->lockForUpdate()->firstOrFail();
+            if ($sewa->pembayarans()->exists()) {
+                return false;
+            }
             $kamarId = $sewa->kamar_id;
             $proof = $sewa->bukti_pembayaran;
             $sewa->delete();
@@ -210,7 +213,15 @@ class SewaController extends Controller
             if ($proof) {
                 DB::afterCommit(fn () => app(PrivateFileCleanup::class)->deleteOrQueue($proof, 'lease delete'));
             }
+
+            return true;
         });
+
+        if (! $deleted) {
+            return redirect()
+                ->route('sewas.index')
+                ->with('error', 'Data sewa tidak dapat dihapus karena memiliki riwayat pembayaran. Pertahankan data untuk audit keuangan.');
+        }
 
         return redirect()->route('sewas.index')->with('success', 'Data sewa berhasil dihapus.');
     }
