@@ -20,6 +20,7 @@ use App\Http\Controllers\SecureFileController;
 use App\Http\Controllers\SewaController;
 use App\Http\Controllers\SewaPaymentRegistrationController;
 use App\Http\Controllers\UserManagementController;
+use App\Models\FileCleanupJob;
 use App\Models\Keuangan;
 use App\Models\Kamar;
 use App\Models\Pembayaran;
@@ -143,10 +144,19 @@ Route::get('/', function () {
 
     $penghuniTerbaru = Penghuni::latest()->take(5)->get();
 
+    $cleanupStats = FileCleanupJob::query()
+        ->selectRaw('COUNT(*) as pending_count, MAX(attempts) as max_attempts, MIN(created_at) as oldest_at')
+        ->first();
+    $cleanupQueue = [
+        'count' => (int) $cleanupStats->pending_count,
+        'max_attempts' => (int) ($cleanupStats->max_attempts ?? 0),
+        'oldest_at' => $cleanupStats->oldest_at ? Carbon::parse($cleanupStats->oldest_at) : null,
+    ];
+
     return view('dashboard', compact(
         'stat', 'sewaTerbaru', 'sewaAkanBerakhir',
         'chartData', 'hunianChart', 'kamarKosong',
-        'pembayaranTerbaru', 'penghuniTerbaru'
+        'pembayaranTerbaru', 'penghuniTerbaru', 'cleanupQueue'
     ));
 })->name('dashboard');
 

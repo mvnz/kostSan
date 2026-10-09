@@ -99,6 +99,28 @@
 
 <div class="dashboard-modern">
 
+@if(($cleanupQueue['count'] ?? 0) > 0)
+<div class="alert alert-warning d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-6" role="alert">
+    <div class="d-flex align-items-start gap-3">
+        <i class="icon-base bx bx-error-circle fs-3 flex-shrink-0" aria-hidden="true"></i>
+        <div>
+            <strong>Antrean file privat perlu ditangani</strong>
+            <div class="small mt-1">
+                {{ $cleanupQueue['count'] }} file menunggu pembersihan;
+                Percobaan tertinggi: {{ $cleanupQueue['max_attempts'] }}.
+                @if($cleanupQueue['oldest_at'])
+                    Antrean tertua {{ $cleanupQueue['oldest_at']->diffForHumans() }}.
+                @endif
+            </div>
+        </div>
+    </div>
+    <div class="small text-md-end">
+        Minta admin server memeriksa<br>
+        <code class="text-break">php artisan private-files:cleanup --dry-run</code>
+    </div>
+</div>
+@endif
+
 {{-- ══ ROW 1: Welcome Card + 2 KPI Cards ══ --}}
 <div class="row">
 

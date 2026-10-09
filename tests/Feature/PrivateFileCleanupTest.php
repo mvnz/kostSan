@@ -87,4 +87,35 @@ class PrivateFileCleanupTest extends TestCase
         $this->assertDatabaseMissing('pembayarans', ['id' => $payment->id]);
         $this->assertDatabaseHas('file_cleanup_jobs', ['path' => 'bukti-pembayaran-sewa/fail.pdf', 'context' => 'payment delete', 'attempts' => 1]);
     }
+
+    public function test_dashboard_warns_about_cleanup_backlog_without_exposing_paths_or_errors(): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $this->get('/')->assertOk()->assertDontSee('Antrean file privat perlu ditangani');
+
+        FileCleanupJob::create([
+            'path' => 'bukti-keuangan/private-resident-proof.pdf',
+            'context' => 'finance replacement',
+            'attempts' => 3,
+            'last_error' => 'storage credential secret detail',
+            'last_attempt_at' => now()->subHour(),
+        ]);
+        FileCleanupJob::create([
+            'path' => 'identitas/private-resident-id.jpg',
+            'context' => 'registration rollback',
+            'attempts' => 1,
+            'last_error' => 'offline',
+            'last_attempt_at' => now(),
+        ]);
+
+        $this->get('/')
+            ->assertOk()
+            ->assertSee('Antrean file privat perlu ditangani')
+            ->assertSee('2 file')
+            ->assertSee('Percobaan tertinggi: 3')
+            ->assertSee('private-files:cleanup --dry-run')
+            ->assertDontSee('private-resident-proof.pdf')
+            ->assertDontSee('storage credential secret detail');
+    }
 }

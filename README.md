@@ -92,7 +92,7 @@ Bukti Keuangan manual kini dipertahankan jika perubahan/penghapusan database gag
 
 ## Antrean pembersihan file privat
 
-Penghapusan bukti lama dilakukan setelah transaksi database commit. Bila storage mengembalikan gagal atau melempar error, path tidak lagi hilang diam-diam: sistem menyimpan satu antrean unik dengan konteks, jumlah percobaan, error terakhir, dan waktu percobaan. Retry terjadwal berjalan tiap jam maksimal 100 file bila Laravel scheduler aktif. Periksa tanpa mengubah data dengan `php artisan private-files:cleanup --dry-run`; jalankan retry manual dengan `php artisan private-files:cleanup --limit=100`. File yang berhasil dihapus otomatis keluar dari antrean; kegagalan tetap tersimpan dan jumlah percobaan bertambah. Pastikan worker `php artisan schedule:run`/`schedule:work` benar-benar dikonfigurasi pada deployment.
+Penghapusan bukti lama dilakukan setelah transaksi database commit. Bila storage mengembalikan gagal atau melempar error, path tidak lagi hilang diam-diam: sistem menyimpan satu antrean unik dengan konteks, jumlah percobaan, error terakhir, dan waktu percobaan. Retry terjadwal berjalan tiap jam maksimal 100 file bila Laravel scheduler aktif. Periksa tanpa mengubah data dengan `php artisan private-files:cleanup --dry-run`; jalankan retry manual dengan `php artisan private-files:cleanup --limit=100`. File yang berhasil dihapus otomatis keluar dari antrean; kegagalan tetap tersimpan dan jumlah percobaan bertambah. Dashboard menampilkan peringatan berisi jumlah antrean, umur antrean tertua, dan percobaan tertinggi tanpa membocorkan path atau pesan error storage. Pastikan worker `php artisan schedule:run`/`schedule:work` benar-benar dikonfigurasi pada deployment.
 
 ## Privasi log aktivitas
 
@@ -106,7 +106,7 @@ Pendaftaran/pembayaran melalui link publik sekarang membersihkan unggahan baru b
 
 Detail Invoice dan Pembayaran sekarang dapat dibaca dengan hak Lihat masing-masing modul tanpa diarahkan ke halaman Edit. Tautan sumber lintas modul mengikuti izin; transaksi lunas/invoice otomatis tidak menawarkan edit terpisah. Laporan Keuangan HTML/PDF memvalidasi bulan dan tetap tepat saat tanggal sistem 31. Laporan Hunian menghitung kamar unik pada sebagian bulan, mengecualikan tanggal checkout, dan memvalidasi tahun/cakupan; rata-rata harian belum dicakup.
 
-Checkpoint kelanjutan terbaru: [Redaksi token log aktivitas](docs/reviews/2026-10-09-activity-log-redaction.md). Baca juga [antrean pembersihan file privat](docs/reviews/2026-10-09-private-file-cleanup.md), [tautan pemasukan manual historis](docs/reviews/2026-10-09-manual-income-linking.md), dan [deduplikasi tagihan manual](docs/reviews/2026-10-09-manual-billing-overlap.md) sebelum mengulang backlog.
+Checkpoint kelanjutan terbaru: [Peringatan antrean file privat](docs/reviews/2026-10-10-cleanup-dashboard-alert.md). Baca juga [redaksi token log aktivitas](docs/reviews/2026-10-09-activity-log-redaction.md), [antrean pembersihan file privat](docs/reviews/2026-10-09-private-file-cleanup.md), [tautan pemasukan manual historis](docs/reviews/2026-10-09-manual-income-linking.md), dan [deduplikasi tagihan manual](docs/reviews/2026-10-09-manual-billing-overlap.md) sebelum mengulang backlog.
 
 ## Cakupan pembayaran lewat link
 
