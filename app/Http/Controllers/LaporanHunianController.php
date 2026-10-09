@@ -21,23 +21,25 @@ class LaporanHunianController extends Controller
 
         $bulanData = [];
         for ($m = 1; $m <= 12; $m++) {
-            $awal  = Carbon::create($tahun, $m, 1)->startOfMonth();
+            $awal = Carbon::create($tahun, $m, 1)->startOfMonth();
             $terisi = app(MonthlyOccupancy::class)->rooms($awal, $cakupan === 'riwayat');
 
             $pct = $totalKamar > 0 ? round($terisi / $totalKamar * 100, 1) : 0;
 
             $bulanData[] = [
-                'bulan'       => $awal->translatedFormat('F'),
+                'bulan' => $awal->translatedFormat('F'),
                 'bulan_short' => $awal->translatedFormat('M'),
-                'terisi'      => $terisi,
-                'kosong'      => max(0, $totalKamar - $terisi),
-                'pct'         => $pct,
+                'terisi' => $terisi,
+                'kosong' => max(0, $totalKamar - $terisi),
+                'pct' => $pct,
             ];
         }
 
         // Per-kamar status saat ini
         $kamars = Kamar::with(['sewas' => function ($q) {
             $q->with('penghuni')->where('status', 'aktif');
+        }, 'confirmedReservations' => function ($q) {
+            $q->with('penghuni')->orderBy('rencana_masuk');
         }])->orderBy('nomor')->get();
 
         $avgHunian = round(collect($bulanData)->avg('pct'), 1);

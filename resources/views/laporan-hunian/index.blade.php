@@ -131,7 +131,10 @@ $pageTitle = 'Laporan Hunian';
                 </thead>
                 <tbody>
                     @foreach($kamars as $k)
-                    @php $sewaAktif = $k->sewas->first(); @endphp
+                    @php
+                        $sewaAktif = $k->sewas->first();
+                        $reservasiTerkonfirmasi = $k->confirmedReservations->first();
+                    @endphp
                     <tr>
                         <td class="fw-semibold">{{ $k->nomor }}</td>
                         <td>{{ $k->tipe }}</td>
@@ -140,15 +143,16 @@ $pageTitle = 'Laporan Hunian';
                                 <span class="badge bg-label-success">Terisi</span>
                             @elseif($k->status === 'perbaikan')
                                 <span class="badge bg-label-warning">Perbaikan</span>
-                            @elseif($k->status === 'reservasi')
-                                <span class="badge bg-label-info">Reservasi</span>
                             @else
                                 <span class="badge bg-label-danger">Kosong</span>
                             @endif
+                            @if($reservasiTerkonfirmasi)
+                                <span class="badge bg-label-info ms-1"><i class="bx bx-calendar-check me-1"></i>Reservasi</span>
+                            @endif
                         </td>
-                        <td>{{ $sewaAktif?->penghuni?->nama ?? '-' }}</td>
-                        <td>{{ optional($sewaAktif?->tanggal_masuk)->format('d/m/Y') ?? '-' }}</td>
-                        <td>{{ optional($sewaAktif?->tanggal_keluar)->format('d/m/Y') ?? '-' }}</td>
+                        <td>{{ $sewaAktif?->penghuni?->nama ?? $reservasiTerkonfirmasi?->penghuni?->nama ?? '-' }}</td>
+                        <td>{{ optional($sewaAktif?->tanggal_masuk ?? $reservasiTerkonfirmasi?->rencana_masuk)->format('d/m/Y') ?? '-' }}</td>
+                        <td>{{ optional($sewaAktif?->tanggal_keluar ?? $reservasiTerkonfirmasi?->rencana_keluar)->format('d/m/Y') ?? '-' }}</td>
                     </tr>
                     @endforeach
                 </tbody>

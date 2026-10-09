@@ -71,10 +71,13 @@ $pageTitle = 'Kamar';
                             <span class="badge rounded-pill bg-label-success">Tersedia</span>
                         @elseif($kamar->status === 'terisi')
                             <span class="badge rounded-pill bg-label-danger">Terisi</span>
-                        @elseif($kamar->status === 'reservasi')
-                            <span class="badge rounded-pill bg-label-warning">Reservasi</span>
                         @else
                             <span class="badge rounded-pill bg-label-secondary">Perbaikan</span>
+                        @endif
+                        @if($kamar->confirmed_reservations_count)
+                            <span class="badge rounded-pill bg-label-warning ms-1" title="Reservasi terkonfirmasi yang belum berakhir">
+                                <i class="bx bx-calendar-check me-1"></i>{{ $kamar->confirmed_reservations_count }} Reservasi
+                            </span>
                         @endif
                     </td>
                     <td>

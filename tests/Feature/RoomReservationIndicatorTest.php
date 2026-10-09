@@ -24,6 +24,8 @@ class RoomReservationIndicatorTest extends TestCase
             'menu_permissions' => [
                 'manajemen_sewa.data_sewa' => ['view'],
                 'manajemen_sewa.sewa_kamar' => ['view'],
+                'master_data.data_kamar' => ['view'],
+                'keuangan.laporan_hunian' => ['view'],
             ],
         ]);
         $this->actingAs(User::factory()->create(['role_id' => $role->id]));
@@ -64,6 +66,26 @@ class RoomReservationIndicatorTest extends TestCase
             ->assertOk()
             ->assertViewHas('counts', fn (array $counts) => $counts['reservasi'] === 0);
         $this->assertStringNotContainsString('<span class="reservation-badge"', $response->getContent());
+    }
+
+    public function test_master_room_and_occupancy_report_show_confirmed_reservation_separately(): void
+    {
+        $room = $this->room('INDICATOR-REPORT');
+        $reservation = $this->reservation($room, 'dikonfirmasi', '2026-11-01', '2026-12-01');
+
+        $this->get('/kamars')
+            ->assertOk()
+            ->assertSee('INDICATOR-REPORT')
+            ->assertSee('1 Reservasi')
+            ->assertSee('Tersedia');
+
+        $this->get('/laporan-hunian?tahun=2026')
+            ->assertOk()
+            ->assertSee('INDICATOR-REPORT')
+            ->assertSee('Reservasi')
+            ->assertSee($reservation->penghuni->nama)
+            ->assertSee('01/11/2026')
+            ->assertSee('01/12/2026');
     }
 
     private function room(string $number): Kamar

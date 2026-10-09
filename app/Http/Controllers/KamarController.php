@@ -19,7 +19,7 @@ class KamarController extends Controller
     {
         KamarFloor::syncFromKamars();
 
-        $kamars = Kamar::withCount(['sewas', 'reservasis'])->orderBy('nomor')->get();
+        $kamars = Kamar::withCount(['sewas', 'reservasis', 'confirmedReservations'])->orderBy('nomor')->get();
         $floorsByNumber = KamarFloor::orderBy('number')->pluck('name', 'number');
 
         return view('kamars.index', compact('kamars', 'floorsByNumber'));
