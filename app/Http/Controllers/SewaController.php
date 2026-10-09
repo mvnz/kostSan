@@ -233,7 +233,7 @@ class SewaController extends Controller
             return;
         }
 
-        $aktif = Sewa::where('kamar_id', $kamarId)->where('status', 'aktif')->exists();
+        $aktif = Sewa::where('kamar_id', $kamarId)->whereIn('status', ['aktif', 'menunggak'])->exists();
         $kamar->update(['status' => $aktif ? 'terisi' : 'tersedia']);
     }
 

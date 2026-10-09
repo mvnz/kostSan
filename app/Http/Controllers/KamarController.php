@@ -115,11 +115,21 @@ class KamarController extends Controller
 
     public function selesaiSewa(Kamar $kamar)
     {
-        Sewa::where('kamar_id', $kamar->id)
-            ->where('status', 'aktif')
-            ->update(['status' => 'selesai']);
+        DB::transaction(function () use ($kamar): void {
+            $kamar = Kamar::whereKey($kamar->id)->lockForUpdate()->firstOrFail();
+            $sewas = Sewa::where('kamar_id', $kamar->id)
+                ->whereIn('status', ['aktif', 'menunggak'])
+                ->lockForUpdate()
+                ->get();
+            if ($sewas->count() !== 1) {
+                throw ValidationException::withMessages([
+                    'sewa' => 'Penyelesaian membutuhkan tepat satu sewa aktif atau menunggak. Periksa Data Sewa.',
+                ]);
+            }
 
-        $kamar->update(['status' => 'tersedia']);
+            $sewas->first()->update(['status' => 'selesai']);
+            $kamar->update(['status' => 'tersedia']);
+        });
 
         return redirect()->route('kamars.sewa')->with('success', 'Sewa kamar '.$kamar->nomor.' telah diselesaikan.');
     }
