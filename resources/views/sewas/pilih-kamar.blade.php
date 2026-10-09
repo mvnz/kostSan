@@ -49,7 +49,7 @@
                 <span class="legend-box" style="background:#ea5455"></span><small>Terisi</small>
             </div>
             <div class="d-flex align-items-center gap-2">
-                <span class="legend-box" style="background:#ff9f43"></span><small>Reservasi</small>
+                <span class="legend-box reservation-marker"></span><small>Ada reservasi terkonfirmasi</small>
             </div>
             <div class="d-flex align-items-center gap-2">
                 <span class="legend-box" style="background:#a8aaae"></span><small>Perbaikan</small>
@@ -70,8 +70,11 @@
                  data-tipe="{{ $kamar->tipe }}"
                  data-harga="{{ (int) $kamar->harga_bulanan }}"
                  data-status="{{ $kamar->status }}"
-                 title="{{ $kamar->nomor }} — {{ $kamar->tipe }} — Rp {{ number_format((float)$kamar->harga_bulanan,0,',','.') }}/bln — {{ ucfirst($kamar->status) }}"
+                 title="{{ $kamar->nomor }} — {{ $kamar->tipe }} — Rp {{ number_format((float)$kamar->harga_bulanan,0,',','.') }}/bln — {{ ucfirst($kamar->status) }}{{ $kamar->confirmed_reservations_count ? ' — Ada reservasi terkonfirmasi' : '' }}"
                  @if($kamar->status === 'tersedia') onclick="selectSeat(this)" role="button" @endif>
+                @if($kamar->confirmed_reservations_count)
+                    <span class="reservation-badge" aria-label="Ada reservasi terkonfirmasi" title="Ada reservasi terkonfirmasi"><i class="bx bx-calendar-check"></i></span>
+                @endif
                 <span class="seat-number">{{ $kamar->nomor }}</span>
                 <span class="seat-type">{{ $kamar->tipe }}</span>
                 <span class="seat-icon">
@@ -79,8 +82,6 @@
                         <i class="bx bx-home-smile"></i>
                     @elseif($kamar->status === 'terisi')
                         <i class="bx bx-user"></i>
-                    @elseif($kamar->status === 'reservasi')
-                        <i class="bx bx-calendar-check"></i>
                     @else
                         <i class="bx bx-wrench"></i>
                     @endif
@@ -130,6 +131,12 @@
         border-radius: 4px;
         display: inline-block;
         flex-shrink: 0;
+    }
+    .reservation-marker { background:#ff9f43; border-radius:50%; width:12px; height:12px; }
+    .reservation-badge {
+        position:absolute; top:-7px; right:-7px; width:24px; height:24px;
+        display:flex; align-items:center; justify-content:center; border-radius:50%;
+        background:#ff9f43; color:#fff; border:2px solid #fff; z-index:1;
     }
 
     /* ─── Cinema Screen ─── */
@@ -198,9 +205,6 @@
 
     .seat-terisi    { background: #ea5455; color: #fff; cursor: not-allowed; opacity: .75; }
     .seat-terisi::after { background: #c73f40; }
-
-    .seat-reservasi { background: #ff9f43; color: #fff; cursor: not-allowed; opacity: .8; }
-    .seat-reservasi::after { background: #e08830; }
 
     .seat-perbaikan { background: #a8aaae; color: #fff; cursor: not-allowed; opacity: .7; }
     .seat-perbaikan::after { background: #8e9094; }

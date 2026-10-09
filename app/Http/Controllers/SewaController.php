@@ -28,11 +28,11 @@ class SewaController extends Controller
 
     public function pilihKamar()
     {
-        $kamars = Kamar::orderBy('nomor')->get();
+        $kamars = Kamar::withCount('confirmedReservations')->orderBy('nomor')->get();
         $counts = [
             'tersedia' => $kamars->where('status', 'tersedia')->count(),
             'terisi' => $kamars->where('status', 'terisi')->count(),
-            'reservasi' => $kamars->where('status', 'reservasi')->count(),
+            'reservasi' => $kamars->where('confirmed_reservations_count', '>', 0)->count(),
             'perbaikan' => $kamars->where('status', 'perbaikan')->count(),
         ];
 

@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Kamar extends Model
 {
@@ -33,5 +33,15 @@ class Kamar extends Model
     public function reservasis(): HasMany
     {
         return $this->hasMany(Reservasi::class);
+    }
+
+    public function confirmedReservations(): HasMany
+    {
+        return $this->reservasis()
+            ->where('status', 'dikonfirmasi')
+            ->where(function ($query): void {
+                $query->whereNull('rencana_keluar')
+                    ->orWhereDate('rencana_keluar', '>=', today());
+            });
     }
 }
