@@ -7,12 +7,14 @@ use App\Models\KostProfile;
 use App\Models\Pembayaran;
 use App\Models\Penghuni;
 use App\Models\Sewa;
-use App\Services\RoomAvailability;
 use App\Services\PrivateFileCleanup;
+use App\Services\PrivateUpload;
+use App\Services\RoomAvailability;
 use App\Services\WhatsAppService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 class SewaController extends Controller
 {
@@ -70,19 +72,29 @@ class SewaController extends Controller
             'catatan' => ['nullable', 'string'],
         ]);
 
-        $sewa = DB::transaction(function () use ($validated, $request) {
-            $kamar = Kamar::whereKey($validated['kamar_id'])->lockForUpdate()->firstOrFail();
-            if ($validated['status'] !== 'selesai') {
-                app(RoomAvailability::class)->assertAvailable($kamar, $validated['tanggal_masuk'], $validated['tanggal_keluar'] ?? null, resident: (int) $validated['penghuni_id']);
-            }
-            if ($request->hasFile('bukti_pembayaran')) {
-                $validated['bukti_pembayaran'] = $request->file('bukti_pembayaran')->store('bukti-sewa', 'local');
-            }
-            $sewa = Sewa::create($validated);
-            $this->syncKamarStatus($sewa->kamar_id);
+        $storedProof = null;
+        try {
+            $sewa = DB::transaction(function () use ($validated, $request, &$storedProof) {
+                $kamar = Kamar::whereKey($validated['kamar_id'])->lockForUpdate()->firstOrFail();
+                if ($validated['status'] !== 'selesai') {
+                    app(RoomAvailability::class)->assertAvailable($kamar, $validated['tanggal_masuk'], $validated['tanggal_keluar'] ?? null, resident: (int) $validated['penghuni_id']);
+                }
+                if ($request->hasFile('bukti_pembayaran')) {
+                    $storedProof = app(PrivateUpload::class)->store($request->file('bukti_pembayaran'), 'bukti-sewa', 'bukti_pembayaran');
+                    $validated['bukti_pembayaran'] = $storedProof;
+                }
+                $sewa = Sewa::create($validated);
+                $this->syncKamarStatus($sewa->kamar_id);
 
-            return $sewa;
-        });
+                return $sewa;
+            });
+        } catch (Throwable $exception) {
+            if ($storedProof) {
+                app(PrivateFileCleanup::class)->deleteOrQueue($storedProof, 'lease create rollback');
+            }
+
+            throw $exception;
+        }
 
         $sewa->loadMissing(['penghuni', 'kamar']);
         if ($sewa->status === 'aktif' && filled($sewa->penghuni?->telepon)) {
@@ -151,37 +163,54 @@ class SewaController extends Controller
             'catatan' => ['nullable', 'string'],
         ]);
 
-        DB::transaction(function () use ($validated, $request, $sewa): void {
-            $rooms = Kamar::whereIn('id', [$sewa->kamar_id, $validated['kamar_id']])->orderBy('id')->lockForUpdate()->get();
-            $sewa = Sewa::whereKey($sewa->id)->lockForUpdate()->firstOrFail();
-            $kamar = $rooms->firstWhere('id', $validated['kamar_id']);
-            abort_unless($kamar, 404);
-            if ($validated['status'] !== 'selesai') {
-                app(RoomAvailability::class)->assertAvailable($kamar, $validated['tanggal_masuk'], $validated['tanggal_keluar'] ?? null, exceptLease: $sewa->id, resident: (int) $validated['penghuni_id']);
+        $replacement = null;
+        try {
+            DB::transaction(function () use ($validated, $request, $sewa, &$replacement): void {
+                $rooms = Kamar::whereIn('id', [$sewa->kamar_id, $validated['kamar_id']])->orderBy('id')->lockForUpdate()->get();
+                $sewa = Sewa::whereKey($sewa->id)->lockForUpdate()->firstOrFail();
+                $kamar = $rooms->firstWhere('id', $validated['kamar_id']);
+                abort_unless($kamar, 404);
+                if ($validated['status'] !== 'selesai') {
+                    app(RoomAvailability::class)->assertAvailable($kamar, $validated['tanggal_masuk'], $validated['tanggal_keluar'] ?? null, exceptLease: $sewa->id, resident: (int) $validated['penghuni_id']);
+                }
+                if ($request->hasFile('bukti_pembayaran')) {
+                    $replacement = app(PrivateUpload::class)->store($request->file('bukti_pembayaran'), 'bukti-sewa', 'bukti_pembayaran');
+                    $validated['bukti_pembayaran'] = $replacement;
+                } else {
+                    unset($validated['bukti_pembayaran']);
+                }
+                $oldKamarId = $sewa->kamar_id;
+                $oldProof = $sewa->bukti_pembayaran;
+                $sewa->update($validated);
+                $this->syncKamarStatus($oldKamarId);
+                $this->syncKamarStatus($sewa->kamar_id);
+                if ($replacement && $oldProof) {
+                    DB::afterCommit(fn () => app(PrivateFileCleanup::class)->deleteOrQueue($oldProof, 'lease proof replacement'));
+                }
+            });
+        } catch (Throwable $exception) {
+            if ($replacement) {
+                app(PrivateFileCleanup::class)->deleteOrQueue($replacement, 'lease update rollback');
             }
-            if ($request->hasFile('bukti_pembayaran')) {
-                $validated['bukti_pembayaran'] = $request->file('bukti_pembayaran')->store('bukti-sewa', 'local');
-            } else {
-                unset($validated['bukti_pembayaran']);
-            }
-            $oldKamarId = $sewa->kamar_id;
-            $oldProof = $sewa->bukti_pembayaran;
-            $sewa->update($validated);
-            $this->syncKamarStatus($oldKamarId);
-            $this->syncKamarStatus($sewa->kamar_id);
-            if ($request->hasFile('bukti_pembayaran') && $oldProof) {
-                DB::afterCommit(fn () => app(PrivateFileCleanup::class)->deleteOrQueue($oldProof, 'lease proof replacement'));
-            }
-        });
+
+            throw $exception;
+        }
 
         return redirect()->route('sewas.index')->with('success', 'Data sewa berhasil diperbarui.');
     }
 
     public function destroy(Sewa $sewa)
     {
-        $kamarId = $sewa->kamar_id;
-        $sewa->delete();
-        $this->syncKamarStatus($kamarId);
+        DB::transaction(function () use ($sewa): void {
+            $sewa = Sewa::whereKey($sewa->id)->lockForUpdate()->firstOrFail();
+            $kamarId = $sewa->kamar_id;
+            $proof = $sewa->bukti_pembayaran;
+            $sewa->delete();
+            $this->syncKamarStatus($kamarId);
+            if ($proof) {
+                DB::afterCommit(fn () => app(PrivateFileCleanup::class)->deleteOrQueue($proof, 'lease delete'));
+            }
+        });
 
         return redirect()->route('sewas.index')->with('success', 'Data sewa berhasil dihapus.');
     }

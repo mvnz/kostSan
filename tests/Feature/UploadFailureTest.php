@@ -61,6 +61,32 @@ class UploadFailureTest extends TestCase
         $this->assertDatabaseCount('invoices', 0);
     }
 
+    public function test_failed_lease_proof_upload_rejects_create_and_preserves_existing_lease_on_update(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $room = Kamar::create(['nomor' => 'LEASE-UPLOAD', 'tipe' => 'A', 'harga_bulanan' => 550000, 'status' => 'tersedia']);
+        $resident = Penghuni::create(['nama' => 'Lease Upload Synthetic', 'telepon' => '']);
+        $payload = [
+            'kamar_id' => $room->id,
+            'penghuni_id' => $resident->id,
+            'tanggal_masuk' => '2026-10-01',
+            'tanggal_keluar' => '2026-11-01',
+            'biaya_bulanan' => 550000,
+            'status' => 'aktif',
+            'bukti_pembayaran' => UploadedFile::fake()->create('proof.pdf', 10, 'application/pdf'),
+        ];
+
+        $this->failDisk();
+        $this->postJson('/sewas', $payload)->assertUnprocessable()->assertJsonValidationErrors('bukti_pembayaran');
+        $this->assertDatabaseCount('sewas', 0);
+        $this->assertSame('tersedia', $room->fresh()->status);
+
+        $lease = Sewa::create(array_merge($payload, ['bukti_pembayaran' => 'bukti-sewa/original.pdf']));
+        $payload['bukti_pembayaran'] = UploadedFile::fake()->create('replacement.pdf', 10, 'application/pdf');
+        $this->putJson('/sewas/'.$lease->id, $payload)->assertUnprocessable()->assertJsonValidationErrors('bukti_pembayaran');
+        $this->assertSame('bukti-sewa/original.pdf', $lease->fresh()->bukti_pembayaran);
+    }
+
     public function test_failed_public_payment_upload_preserves_unused_token(): void
     {
         $lease = $this->lease();

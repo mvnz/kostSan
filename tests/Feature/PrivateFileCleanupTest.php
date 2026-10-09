@@ -88,6 +88,30 @@ class PrivateFileCleanupTest extends TestCase
         $this->assertDatabaseHas('file_cleanup_jobs', ['path' => 'bukti-pembayaran-sewa/fail.pdf', 'context' => 'payment delete', 'attempts' => 1]);
     }
 
+    public function test_lease_delete_commits_and_queues_failed_proof_cleanup(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $room = Kamar::create(['nomor' => 'LEASE-CLEANUP', 'tipe' => 'A', 'harga_bulanan' => 550000, 'status' => 'terisi']);
+        $resident = Penghuni::create(['nama' => 'Lease Cleanup Synthetic', 'telepon' => '']);
+        $lease = Sewa::create([
+            'kamar_id' => $room->id,
+            'penghuni_id' => $resident->id,
+            'tanggal_masuk' => '2026-10-01',
+            'biaya_bulanan' => 550000,
+            'status' => 'aktif',
+            'bukti_pembayaran' => 'bukti-sewa/fail.pdf',
+        ]);
+        $disk = Mockery::mock();
+        $disk->shouldReceive('delete')->once()->with('bukti-sewa/fail.pdf')->andReturn(false);
+        Storage::shouldReceive('disk')->once()->with('local')->andReturn($disk);
+
+        $this->delete('/sewas/'.$lease->id)->assertRedirect('/sewas');
+
+        $this->assertDatabaseMissing('sewas', ['id' => $lease->id]);
+        $this->assertSame('tersedia', $room->fresh()->status);
+        $this->assertDatabaseHas('file_cleanup_jobs', ['path' => 'bukti-sewa/fail.pdf', 'context' => 'lease delete', 'attempts' => 1]);
+    }
+
     public function test_dashboard_warns_about_cleanup_backlog_without_exposing_paths_or_errors(): void
     {
         $this->actingAs(User::factory()->create());
