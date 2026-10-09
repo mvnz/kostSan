@@ -88,6 +88,139 @@ class BillingCoverageTest extends TestCase
         $this->assertDatabaseCount('pembayarans', 1);
     }
 
+    public function test_manual_monthly_bill_rejects_an_overlap_without_leaving_an_upload(): void
+    {
+        Storage::fake('local');
+        $this->actingAs(User::factory()->create());
+        $lease = $this->lease();
+        $payload = [
+            'sewa_id' => $lease->id,
+            'periode' => '2026-11-20',
+            'metode' => 'transfer',
+            'jumlah' => 550000,
+        ];
+
+        $this->post('/pembayarans', $payload)->assertRedirect('/pembayarans');
+        $this->postJson('/pembayarans', $payload + [
+            'bukti_pembayaran' => UploadedFile::fake()->create('duplicate.pdf', 10, 'application/pdf'),
+        ])->assertUnprocessable()->assertJsonValidationErrors('periode');
+
+        $payment = Pembayaran::sole();
+        $this->assertSame('2026-11-01', $payment->coverage_start->toDateString());
+        $this->assertSame('2026-12-01', $payment->coverage_end->toDateString());
+        $this->assertDatabaseCount('invoices', 1);
+        $this->assertSame([], Storage::disk('local')->allFiles('bukti-pembayaran-sewa'));
+    }
+
+    public function test_manual_overlap_requires_and_records_an_explicit_reason(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $lease = $this->lease();
+        Pembayaran::create([
+            'sewa_id' => $lease->id,
+            'periode' => '2026-11-01',
+            'coverage_start' => '2026-11-01',
+            'coverage_end' => '2026-12-01',
+            'metode' => 'cash',
+            'jumlah' => 400000,
+            'status' => 'belum_lunas',
+        ]);
+        $payload = [
+            'sewa_id' => $lease->id,
+            'periode' => '2026-11-15',
+            'metode' => 'cash',
+            'jumlah' => 150000,
+            'overlap_override' => '1',
+        ];
+
+        $this->postJson('/pembayarans', $payload + ['overlap_override_reason' => 'terlalu'])->assertUnprocessable()->assertJsonValidationErrors('overlap_override_reason');
+        $reason = 'Cicilan kedua sesuai kesepakatan penghuni <script>alert(1)</script>';
+        $this->post('/pembayarans', $payload + ['overlap_override_reason' => $reason])->assertRedirect('/pembayarans');
+
+        $payment = Pembayaran::latest('id')->firstOrFail();
+        $this->assertSame($reason, $payment->overlap_override_reason);
+        $this->get('/pembayarans/'.$payment->id)->assertOk()->assertSee('Pengecualian benturan periode')->assertDontSee('<script>alert(1)</script>', false);
+        $this->assertDatabaseCount('pembayarans', 2);
+        $this->assertDatabaseCount('invoices', 2);
+    }
+
+    public function test_manual_overlap_override_is_rejected_when_there_is_no_overlap(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $lease = $this->lease();
+
+        $this->postJson('/pembayarans', [
+            'sewa_id' => $lease->id,
+            'periode' => '2026-11-01',
+            'metode' => 'cash',
+            'jumlah' => 550000,
+            'overlap_override' => '1',
+            'overlap_override_reason' => 'Alasan yang sebenarnya tidak diperlukan',
+        ])->assertUnprocessable()->assertJsonValidationErrors('overlap_override');
+
+        $this->assertDatabaseCount('pembayarans', 0);
+    }
+
+    public function test_full_term_link_payment_also_blocks_a_manual_monthly_bill(): void
+    {
+        $lease = $this->lease();
+        $this->post('/pembayaran/sewa/'.$this->link($lease)->token, ['metode' => 'transfer'])->assertOk();
+        $this->actingAs(User::factory()->create());
+
+        $this->postJson('/pembayarans', [
+            'sewa_id' => $lease->id,
+            'periode' => '2026-12-15',
+            'metode' => 'cash',
+            'jumlah' => 550000,
+        ])->assertUnprocessable()->assertJsonValidationErrors('periode');
+
+        $this->assertDatabaseCount('pembayarans', 1);
+        $this->assertDatabaseCount('invoices', 1);
+    }
+
+    public function test_moving_a_legacy_bill_cannot_bypass_overlap_protection(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $lease = $this->lease();
+        $existing = Pembayaran::create([
+            'sewa_id' => $lease->id,
+            'periode' => '2026-11-01',
+            'coverage_start' => '2026-11-01',
+            'coverage_end' => '2026-12-01',
+            'metode' => 'cash',
+            'jumlah' => 400000,
+            'status' => 'belum_lunas',
+        ]);
+        $legacy = Pembayaran::create([
+            'sewa_id' => $lease->id,
+            'periode' => '2026-10-01',
+            'metode' => 'cash',
+            'jumlah' => 150000,
+            'status' => 'belum_lunas',
+        ]);
+        $payload = [
+            'sewa_id' => $lease->id,
+            'periode' => '2026-11-10',
+            'metode' => 'cash',
+            'jumlah' => 150000,
+        ];
+
+        $this->putJson('/pembayarans/'.$legacy->id, $payload)->assertUnprocessable()->assertJsonValidationErrors('periode');
+        $this->assertSame('2026-10-01', $legacy->fresh()->periode->toDateString());
+
+        $reason = 'Pemindahan cicilan kedua yang sudah disetujui operator';
+        $this->put('/pembayarans/'.$legacy->id, $payload + [
+            'overlap_override' => '1',
+            'overlap_override_reason' => $reason,
+        ])->assertRedirect('/pembayarans');
+
+        $legacy->refresh();
+        $this->assertSame('2026-11-01', $legacy->coverage_start->toDateString());
+        $this->assertSame('2026-12-01', $legacy->coverage_end->toDateString());
+        $this->assertSame($reason, $legacy->overlap_override_reason);
+        $this->assertSame('2026-11-01', $existing->fresh()->coverage_start->toDateString());
+    }
+
     public function test_invalid_lease_interval_cannot_create_payment_or_consume_token(): void
     {
         $lease = $this->lease();

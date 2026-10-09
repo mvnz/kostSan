@@ -112,20 +112,39 @@ class PembayaranController extends Controller
             'jumlah' => ['required', 'numeric', 'min:0'],
             'keterangan' => ['nullable', 'string'],
             'bukti_pembayaran' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:4096'],
+            'overlap_override' => ['nullable', 'boolean'],
+            'overlap_override_reason' => ['nullable', 'required_if:overlap_override,1', 'string', 'min:10', 'max:500'],
         ]);
 
         // Pembayaran baru selalu menunggu approval pemilik.
         $validated['status'] = 'belum_lunas';
-
-        if ($request->hasFile('bukti_pembayaran')) {
-            $validated['bukti_pembayaran_path'] = app(PrivateUpload::class)->store($request->file('bukti_pembayaran'), 'bukti-pembayaran-sewa', 'bukti_pembayaran');
-        }
+        $override = (bool) ($validated['overlap_override'] ?? false);
+        $overrideReason = $validated['overlap_override_reason'] ?? null;
+        unset($validated['overlap_override'], $validated['overlap_override_reason'], $validated['bukti_pembayaran']);
+        $storedProof = null;
 
         try {
-            DB::transaction(fn () => Pembayaran::create($validated));
+            DB::transaction(function () use ($request, $validated, $override, $overrideReason, &$storedProof): void {
+                $lease = Sewa::whereKey($validated['sewa_id'])->lockForUpdate()->firstOrFail();
+                $start = Carbon::parse($validated['periode'])->startOfMonth();
+                $end = $start->copy()->addMonth();
+                $overlaps = app(BillingCoverage::class)->overlaps($lease, $start, $end);
+                $this->assertManualCoverageAllowed($overlaps, $override);
+
+                $attributes = $validated + [
+                    'coverage_start' => $start->toDateString(),
+                    'coverage_end' => $end->toDateString(),
+                    'overlap_override_reason' => $overlaps ? $overrideReason : null,
+                ];
+                if ($request->hasFile('bukti_pembayaran')) {
+                    $storedProof = app(PrivateUpload::class)->store($request->file('bukti_pembayaran'), 'bukti-pembayaran-sewa', 'bukti_pembayaran');
+                    $attributes['bukti_pembayaran_path'] = $storedProof;
+                }
+                Pembayaran::create($attributes);
+            });
         } catch (\Throwable $exception) {
-            if (! empty($validated['bukti_pembayaran_path'])) {
-                Storage::disk('local')->delete($validated['bukti_pembayaran_path']);
+            if ($storedProof) {
+                Storage::disk('local')->delete($storedProof);
             }
             throw $exception;
         }
@@ -159,16 +178,35 @@ class PembayaranController extends Controller
             'jumlah' => ['required', 'numeric', 'min:0'],
             'keterangan' => ['nullable', 'string'],
             'bukti_pembayaran' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:4096'],
+            'overlap_override' => ['nullable', 'boolean'],
+            'overlap_override_reason' => ['nullable', 'required_if:overlap_override,1', 'string', 'min:10', 'max:500'],
         ]);
 
+        $override = (bool) ($validated['overlap_override'] ?? false);
+        $overrideReason = $validated['overlap_override_reason'] ?? null;
+        unset($validated['overlap_override'], $validated['overlap_override_reason'], $validated['bukti_pembayaran']);
         $replacement = null;
         $committed = false;
         try {
-            DB::transaction(function () use ($request, $pembayaran, $validated, &$replacement, &$committed): void {
+            DB::transaction(function () use ($request, $pembayaran, $validated, $override, $overrideReason, &$replacement, &$committed): void {
                 $payment = Pembayaran::whereKey($pembayaran->id)->lockForUpdate()->firstOrFail();
+                // Keep payment → lease lock order aligned with approval to avoid a lock cycle.
+                $lease = Sewa::whereKey($validated['sewa_id'])->lockForUpdate()->firstOrFail();
                 $this->assertPaymentEditable($payment);
-                if ($payment->coverage_start && ((int) $validated['sewa_id'] !== $payment->sewa_id || $validated['periode'] !== $payment->periode->toDateString())) {
+                $moved = (int) $validated['sewa_id'] !== $payment->sewa_id || $validated['periode'] !== $payment->periode->toDateString();
+                if ($payment->coverage_start && $moved) {
                     throw ValidationException::withMessages(['periode' => 'Tagihan dengan cakupan masa sewa tidak dapat dipindahkan ke sewa/periode lain. Hapus tagihan pending lalu buat ulang agar cakupan tetap benar.']);
+                }
+                if ($moved) {
+                    $start = Carbon::parse($validated['periode'])->startOfMonth();
+                    $end = $start->copy()->addMonth();
+                    $overlaps = app(BillingCoverage::class)->overlaps($lease, $start, $end, $payment->id);
+                    $this->assertManualCoverageAllowed($overlaps, $override);
+                    $validated['coverage_start'] = $start->toDateString();
+                    $validated['coverage_end'] = $end->toDateString();
+                    $validated['overlap_override_reason'] = $overlaps ? $overrideReason : null;
+                } elseif ($override) {
+                    throw ValidationException::withMessages(['overlap_override' => 'Pengecualian hanya digunakan saat membuat atau memindahkan tagihan ke periode yang sudah ditagih.']);
                 }
                 $validated['status'] = 'belum_lunas';
 
@@ -217,6 +255,20 @@ class PembayaranController extends Controller
         if ($payment->status === 'lunas') {
             throw ValidationException::withMessages([
                 'pembayaran' => 'Pembayaran yang sudah disetujui tidak dapat diubah atau dihapus. Catat koreksi secara terpisah untuk menjaga riwayat.',
+            ]);
+        }
+    }
+
+    private function assertManualCoverageAllowed(bool $overlaps, bool $override): void
+    {
+        if ($overlaps && ! $override) {
+            throw ValidationException::withMessages([
+                'periode' => 'Periode ini sudah memiliki tagihan. Aktifkan pengecualian hanya untuk cicilan atau tagihan tambahan yang memang disengaja.',
+            ]);
+        }
+        if (! $overlaps && $override) {
+            throw ValidationException::withMessages([
+                'overlap_override' => 'Tidak ada benturan tagihan pada periode ini; pengecualian tidak diperlukan.',
             ]);
         }
     }

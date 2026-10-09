@@ -54,7 +54,7 @@ npm run build
 
 PHPUnit memakai SQLite di memori dan data sintetis. Tes mencakup hak akses, keamanan link/dokumen, konflik sewa/reservasi, approval berulang, akhir bulan, ekspor, halaman utama, PDF kontrak, dan alur pendaftaran-pembayaran-approval. GitHub Actions menjalankan pemeriksaan dependency, migrasi database baru, suite tes, build, serta kompilasi route/view pada setiap PR dan perubahan `main`.
 
-**Status operasional penuh belum dinyatakan siap.** Rekonsiliasi pembayaran–invoice–buku keuangan, deduplikasi lintas jalur tagihan, dan persaingan transaksi pada database deployment masih memerlukan verifikasi lanjutan. Baca catatan terbaru dalam [`docs/reviews`](docs/reviews) sebelum melanjutkan pekerjaan. Tes tidak menghubungi layanan WhatsApp, memakai data penghuni asli, atau mengubah server/database produksi.
+**Status operasional penuh belum dinyatakan siap.** Rekonsiliasi data historis pembayaran–invoice–buku keuangan dan persaingan transaksi pada database deployment masih memerlukan verifikasi lanjutan. Baca catatan terbaru dalam [`docs/reviews`](docs/reviews) sebelum melanjutkan pekerjaan. Tes tidak menghubungi layanan WhatsApp, memakai data penghuni asli, atau mengubah server/database produksi.
 
 ## Tagihan massal pilihan
 
@@ -104,7 +104,9 @@ Checkpoint kelanjutan terbaru: [Penutupan malam 9 Oktober](docs/reviews/2026-10-
 
 Pembayaran baru melalui link menyimpan awal/akhir masa yang ditagih sebagai snapshot. Detail Pembayaran menampilkan **Masa yang ditagih**; tanggal akhir eksklusif. Bulk Billing menganggap semua bulan yang bertumpang tindih sudah ditagih, termasuk pembayaran yang masih menunggu approval. Link lain untuk sewa tersebut tidak membuat tagihan kedua bila cakupan bertumpang tindih atau sudah ada tagihan bulanan pada masa tersebut. Token yang ditolak tetap belum digunakan; hubungi pengelola untuk memakai tagihan yang sudah ada.
 
-Sewa/periode pembayaran pending dengan snapshot tidak boleh dipindahkan melalui Edit; hapus pending dan buat ulang bila sumbernya perlu dikoreksi. Perpanjangan sewa tidak memperluas cakupan tagihan lama, sehingga bulan sesudah akhir cakupan dapat ditagih. Alur link belum menghitung hanya sisa term setelah perpanjangan: gunakan tagihan bulanan untuk sisa masa, jangan mengirim link seluruh term yang bertumpang tindih. Pembayaran lama tidak di-backfill; periode satu bulan tetap menjadi fallback. Deduplikasi manual dan dukungan cicilan masih memerlukan desain/validasi terpisah.
+Sewa/periode pembayaran pending dengan snapshot tidak boleh dipindahkan melalui Edit; hapus pending dan buat ulang bila sumbernya perlu dikoreksi. Perpanjangan sewa tidak memperluas cakupan tagihan lama, sehingga bulan sesudah akhir cakupan dapat ditagih. Alur link belum menghitung hanya sisa term setelah perpanjangan: gunakan tagihan bulanan untuk sisa masa, jangan mengirim link seluruh term yang bertumpang tindih. Pembayaran lama tidak di-backfill; periode satu bulan tetap menjadi fallback.
+
+Pembayaran manual baru menyimpan cakupan satu bulan dan ditolak bila bertumpang tindih dengan tagihan manual, bulk, atau link pada sewa yang sama. Untuk cicilan atau biaya tambahan yang memang disengaja, centang **Izinkan cicilan atau tagihan tambahan** dan tulis alasan minimal 10 karakter. Pengecualian serta alasannya tampil di Detail Pembayaran untuk audit. Setiap pengecualian tetap membuat payment dan invoice terpisah; sistem belum menghitung saldo cicilan otomatis. Jangan aktifkan pengecualian untuk melewati duplikasi yang tidak disengaja.
 
 ## Login untuk operator dengan hak terbatas
 

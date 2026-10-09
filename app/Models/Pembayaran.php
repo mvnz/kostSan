@@ -13,6 +13,7 @@ class Pembayaran extends Model
         'sewa_id',
         'coverage_start',
         'coverage_end',
+        'overlap_override_reason',
         'periode',
         'tanggal_bayar',
         'metode',
