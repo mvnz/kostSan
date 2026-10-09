@@ -8,9 +8,9 @@ use App\Models\Sewa;
 use App\Models\SewaPaymentLink;
 use App\Services\BillingCoverage;
 use App\Services\PrivateUpload;
+use App\Services\PrivateFileCleanup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -118,7 +118,7 @@ class SewaPaymentRegistrationController extends Controller
                         ...($replacement ? ['bukti_pembayaran_path' => $replacement] : []),
                     ]);
                     if ($replacement && $oldProof) {
-                        DB::afterCommit(fn () => Storage::disk('local')->delete($oldProof));
+                        DB::afterCommit(fn () => app(PrivateFileCleanup::class)->deleteOrQueue($oldProof, 'public payment proof replacement'));
                     }
                     $link->update(['used_at' => now()]);
                     DB::afterCommit(function () use (&$committed): void {
@@ -165,7 +165,7 @@ class SewaPaymentRegistrationController extends Controller
             if (! $committed) {
                 foreach ($uploads as $path) {
                     if ($path) {
-                        Storage::disk('local')->delete($path);
+                        app(PrivateFileCleanup::class)->deleteOrQueue($path, 'public payment rollback');
                     }
                 }
             }

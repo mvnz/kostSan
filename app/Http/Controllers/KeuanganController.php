@@ -6,11 +6,11 @@ use App\Models\Keuangan;
 use App\Models\FinancePaymentLinkAudit;
 use App\Models\Pembayaran;
 use App\Services\PrivateUpload;
+use App\Services\PrivateFileCleanup;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class KeuanganController extends Controller
@@ -244,7 +244,7 @@ class KeuanganController extends Controller
             DB::transaction(fn () => Keuangan::create($validated));
         } catch (\Throwable $exception) {
             if (! empty($validated['bukti_path'])) {
-                Storage::disk('local')->delete($validated['bukti_path']);
+                app(PrivateFileCleanup::class)->deleteOrQueue($validated['bukti_path'], 'finance create rollback');
             }
             throw $exception;
         }
@@ -307,13 +307,13 @@ class KeuanganController extends Controller
                 DB::afterCommit(function () use ($oldProof, $validated, &$committed): void {
                     $committed = true;
                     if ($oldProof && array_key_exists('bukti_path', $validated) && $oldProof !== $validated['bukti_path']) {
-                        Storage::disk('local')->delete($oldProof);
+                        app(PrivateFileCleanup::class)->deleteOrQueue($oldProof, 'finance proof replacement');
                     }
                 });
             });
         } catch (\Throwable $exception) {
             if ($replacement && ! $committed) {
-                Storage::disk('local')->delete($replacement);
+                app(PrivateFileCleanup::class)->deleteOrQueue($replacement, 'finance update rollback');
             }
             throw $exception;
         }
@@ -330,7 +330,7 @@ class KeuanganController extends Controller
             $oldProof = $entry->bukti_path;
             $entry->delete();
             if ($oldProof) {
-                DB::afterCommit(fn () => Storage::disk('local')->delete($oldProof));
+                DB::afterCommit(fn () => app(PrivateFileCleanup::class)->deleteOrQueue($oldProof, 'finance delete'));
             }
         });
 

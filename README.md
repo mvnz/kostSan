@@ -88,7 +88,11 @@ Buka **Keuangan → Rekonsiliasi Pembayaran–Keuangan**. Dibutuhkan hak **Lihat
 
 Laporan tidak menebak relasi atau melakukan backfill. Untuk pembayaran lunas tanpa sumber, sistem menampilkan kandidat pemasukan manual hanya bila tanggal, nominal, jenis `pemasukan`, dan kategori `Sewa Kamar` persis sama. Operator dengan hak **Ubah Keuangan** dan **Ubah Data Sewa** tetap harus memeriksa deskripsi/bukti, memilih kandidat, serta menulis alasan minimal 10 karakter. Tautan membuat pemasukan immutable, membedakannya dari sumber approval pada detail/CSV, dan menyimpan operator, waktu, alasan, serta histori link/unlink. Tautan yang salah dapat dilepas dengan alasan tanpa menghapus payment atau pemasukan; pemasukan approval otomatis tidak dapat dilepas. Detail Keuangan dapat dibaca tanpa izin edit; bukti tetap melalui endpoint privat, dan tautan pembayaran asal mengikuti izin Data Sewa.
 
-Bukti Keuangan manual kini dipertahankan jika perubahan/penghapusan database gagal. Unggahan pengganti yang gagal disimpan dibersihkan; bukti lama dibersihkan setelah commit berhasil. Kegagalan penyimpanan berkas setelah commit tetap membutuhkan pemantauan administratif.
+Bukti Keuangan manual kini dipertahankan jika perubahan/penghapusan database gagal. Unggahan pengganti yang gagal disimpan dibersihkan; bukti lama dibersihkan setelah commit berhasil atau masuk antrean retry bila storage gagal.
+
+## Antrean pembersihan file privat
+
+Penghapusan bukti lama dilakukan setelah transaksi database commit. Bila storage mengembalikan gagal atau melempar error, path tidak lagi hilang diam-diam: sistem menyimpan satu antrean unik dengan konteks, jumlah percobaan, error terakhir, dan waktu percobaan. Retry terjadwal berjalan tiap jam maksimal 100 file bila Laravel scheduler aktif. Periksa tanpa mengubah data dengan `php artisan private-files:cleanup --dry-run`; jalankan retry manual dengan `php artisan private-files:cleanup --limit=100`. File yang berhasil dihapus otomatis keluar dari antrean; kegagalan tetap tersimpan dan jumlah percobaan bertambah. Pastikan worker `php artisan schedule:run`/`schedule:work` benar-benar dikonfigurasi pada deployment.
 
 ## Ekspor Keuangan dan pemulihan unggahan
 
@@ -98,7 +102,7 @@ Pendaftaran/pembayaran melalui link publik sekarang membersihkan unggahan baru b
 
 Detail Invoice dan Pembayaran sekarang dapat dibaca dengan hak Lihat masing-masing modul tanpa diarahkan ke halaman Edit. Tautan sumber lintas modul mengikuti izin; transaksi lunas/invoice otomatis tidak menawarkan edit terpisah. Laporan Keuangan HTML/PDF memvalidasi bulan dan tetap tepat saat tanggal sistem 31. Laporan Hunian menghitung kamar unik pada sebagian bulan, mengecualikan tanggal checkout, dan memvalidasi tahun/cakupan; rata-rata harian belum dicakup.
 
-Checkpoint kelanjutan terbaru: [Tautan pemasukan manual historis](docs/reviews/2026-10-09-manual-income-linking.md). Baca checkpoint ini dan [deduplikasi tagihan manual](docs/reviews/2026-10-09-manual-billing-overlap.md) sebelum mengulang backlog.
+Checkpoint kelanjutan terbaru: [Antrean pembersihan file privat](docs/reviews/2026-10-09-private-file-cleanup.md). Baca juga [tautan pemasukan manual historis](docs/reviews/2026-10-09-manual-income-linking.md) dan [deduplikasi tagihan manual](docs/reviews/2026-10-09-manual-billing-overlap.md) sebelum mengulang backlog.
 
 ## Cakupan pembayaran lewat link
 

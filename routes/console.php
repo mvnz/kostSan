@@ -10,3 +10,4 @@ Artisan::command('inspire', function () {
 
 Schedule::command('notifications:send-sewa-expiry-reminders')->dailyAt('08:00');
 Schedule::command('notifications:send-birthday-greetings')->dailyAt('08:10');
+Schedule::command('private-files:cleanup --limit=100')->hourly()->withoutOverlapping();

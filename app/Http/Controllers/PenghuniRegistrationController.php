@@ -8,12 +8,12 @@ use App\Models\PenghuniRegistrationLink;
 use App\Models\Sewa;
 use App\Models\SewaPaymentLink;
 use App\Services\PrivateUpload;
+use App\Services\PrivateFileCleanup;
 use App\Services\RoomAvailability;
 use App\Services\WhatsAppService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class PenghuniRegistrationController extends Controller
@@ -167,7 +167,7 @@ class PenghuniRegistrationController extends Controller
             if (! $committed) {
                 foreach ($uploads as $path) {
                     if ($path) {
-                        Storage::disk('local')->delete($path);
+                        app(PrivateFileCleanup::class)->deleteOrQueue($path, 'resident registration rollback');
                     }
                 }
             }

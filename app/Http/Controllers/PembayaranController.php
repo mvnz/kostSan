@@ -9,13 +9,13 @@ use App\Models\Pembayaran;
 use App\Models\Sewa;
 use App\Services\BillingCoverage;
 use App\Services\PrivateUpload;
+use App\Services\PrivateFileCleanup;
 use App\Services\RoomAvailability;
 use App\Services\WhatsAppService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class PembayaranController extends Controller
@@ -144,7 +144,7 @@ class PembayaranController extends Controller
             });
         } catch (\Throwable $exception) {
             if ($storedProof) {
-                Storage::disk('local')->delete($storedProof);
+                app(PrivateFileCleanup::class)->deleteOrQueue($storedProof, 'payment create rollback');
             }
             throw $exception;
         }
@@ -217,7 +217,7 @@ class PembayaranController extends Controller
                     if ($oldProof) {
                         DB::afterCommit(function () use ($oldProof, &$committed): void {
                             $committed = true;
-                            Storage::disk('local')->delete($oldProof);
+                            app(PrivateFileCleanup::class)->deleteOrQueue($oldProof, 'payment proof replacement');
                         });
                     }
                 }
@@ -227,7 +227,7 @@ class PembayaranController extends Controller
         } catch (\Throwable $exception) {
             if ($replacement && ! $committed) {
                 // A failed transaction must retain the previously committed proof.
-                Storage::disk('local')->delete($replacement);
+                app(PrivateFileCleanup::class)->deleteOrQueue($replacement, 'payment update rollback');
             }
             throw $exception;
         }
@@ -243,7 +243,7 @@ class PembayaranController extends Controller
             $oldProof = $payment->bukti_pembayaran_path;
             $payment->delete();
             if ($oldProof) {
-                DB::afterCommit(fn () => Storage::disk('local')->delete($oldProof));
+                DB::afterCommit(fn () => app(PrivateFileCleanup::class)->deleteOrQueue($oldProof, 'payment delete'));
             }
         });
 

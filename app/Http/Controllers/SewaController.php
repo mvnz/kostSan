@@ -8,11 +8,11 @@ use App\Models\Pembayaran;
 use App\Models\Penghuni;
 use App\Models\Sewa;
 use App\Services\RoomAvailability;
+use App\Services\PrivateFileCleanup;
 use App\Services\WhatsAppService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class SewaController extends Controller
 {
@@ -170,7 +170,7 @@ class SewaController extends Controller
             $this->syncKamarStatus($oldKamarId);
             $this->syncKamarStatus($sewa->kamar_id);
             if ($request->hasFile('bukti_pembayaran') && $oldProof) {
-                DB::afterCommit(fn () => Storage::disk('local')->delete($oldProof));
+                DB::afterCommit(fn () => app(PrivateFileCleanup::class)->deleteOrQueue($oldProof, 'lease proof replacement'));
             }
         });
 
