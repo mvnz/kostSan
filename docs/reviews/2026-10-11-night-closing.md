@@ -5,8 +5,7 @@
 - Branch utama yang diperiksa tetap berawal dari `3b23279a6e8cd0c3a1b655e1e472fe004a59b596`.
 - Branch kerja lokal: `codex/final-3758f92`.
 - Draft PR: `https://github.com/mvnz/kostSan/pull/4` pada branch `codex/payment-atomicity-reconciliation-20261008`.
-- Head PR terakhir yang berhasil dipublikasikan malam ini: `61f02b8120e12276dac863b8261aa967be4097c4`.
-- Commit lokal setelah head PR: `b64c8e825a1ead79caf88c94da9e4e1a95dc32a6` dan `8a1306172d9d2c50826560dcc4e6aa8c69e8c419`. Publikasi terhambat batas penggunaan sementara konektor GitHub; tidak dilakukan force push atau bypass.
+- Seluruh perubahan kode malam ini, termasuk perbaikan metrik dan checkpoint penutupan, berhasil dipublikasikan ke branch draft PR tanpa force push. Batas penggunaan konektor sempat menunda publikasi, lalu pulih pada tahap penutupan.
 - PR tetap draft dan tidak di-merge karena responsive browser, UAT manusia, dan concurrency engine deployment belum terverifikasi.
 
 ## Hasil malam
@@ -44,7 +43,7 @@ Checkpoint rinci: `2026-10-10-overdue-occupancy-billing.md`, `2026-10-10-room-ma
 
 ## Backlog berikutnya
 
-1. Publikasikan dua commit lokal tersisa dan checkpoint penutupan ketika konektor GitHub pulih, lalu pastikan CI pada SHA yang sama lulus.
+1. Pastikan CI pada head PR final lulus sebelum merge.
 2. Uji responsive ponsel/tablet/desktop dan lakukan UAT manusia dengan skenario operasional terdokumentasi.
 3. Uji transaksi serentak pada engine database deployment representatif, khususnya reservasi→sewa, bulk billing, approval, reversal, dan token publik.
 4. Audit konsistensi notifikasi ulang tahun untuk penghuni `menunggak` serta kebutuhan filter daftar reservasi berdasarkan status.
