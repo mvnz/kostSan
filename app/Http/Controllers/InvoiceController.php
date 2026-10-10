@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Invoice;
 use App\Models\Pembayaran;
 use App\Models\Penghuni;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -16,6 +17,49 @@ class InvoiceController extends Controller
         $invoices = Invoice::with('penghuni', 'payment.sewa.kamar')->latest()->get();
 
         return view('invoices.index', compact('invoices'));
+    }
+
+    public function reconciliation(Request $request)
+    {
+        $filters = $request->validate([
+            'kategori' => ['nullable', 'in:legacy,tanpa_invoice,tidak_sesuai'],
+            'bulan' => ['nullable', 'date_format:Y-m'],
+        ]);
+        $kategori = $filters['kategori'] ?? 'legacy';
+        $legacy = Invoice::query()->whereNull('payment_id')->where('keterangan', 'like', 'AUTO:%');
+        $missing = Pembayaran::query()->whereDoesntHave('invoice');
+        $mismatch = Invoice::query()->whereHas('payment', function ($payments): void {
+            $payments->where(function ($differences): void {
+                $differences->whereColumn('pembayarans.jumlah', '<>', 'invoices.jumlah_tagihan')
+                    ->orWhereColumn('pembayarans.periode', '<>', 'invoices.periode')
+                    ->orWhereHas('sewa', fn ($leases) => $leases->whereColumn('sewas.penghuni_id', '<>', 'invoices.penghuni_id'))
+                    ->orWhere(fn ($status) => $status->where('pembayarans.status', 'lunas')->where('invoices.status', '<>', 'lunas'))
+                    ->orWhere(fn ($status) => $status->where('pembayarans.status', '<>', 'lunas')->where('invoices.status', 'lunas'));
+            });
+        });
+        $bulan = $filters['bulan'] ?? null;
+        if ($bulan) {
+            $start = CarbonImmutable::createFromFormat('!Y-m', $bulan)->startOfMonth();
+            $end = $start->addMonth()->toDateString();
+            $start = $start->toDateString();
+            $legacy->where('periode', '>=', $start)->where('periode', '<', $end);
+            $missing->where('periode', '>=', $start)->where('periode', '<', $end);
+            // A mismatch belongs to either affected month, including a shifted invoice date.
+            $mismatch->where(function ($affected) use ($start, $end): void {
+                $affected->where(fn ($invoice) => $invoice->where('periode', '>=', $start)->where('periode', '<', $end))
+                    ->orWhereHas('payment', fn ($payment) => $payment->where('periode', '>=', $start)->where('periode', '<', $end));
+            });
+        }
+        $counts = ['legacy' => (clone $legacy)->count(), 'tanpa_invoice' => (clone $missing)->count(), 'tidak_sesuai' => (clone $mismatch)->count()];
+        $records = match ($kategori) {
+            'tanpa_invoice' => $missing->with('sewa.penghuni', 'sewa.kamar')->orderBy('id')->paginate(25),
+            'tidak_sesuai' => $mismatch->with('penghuni', 'payment.sewa.kamar')->orderBy('id')->paginate(25),
+            default => $legacy->with('penghuni')->orderBy('id')->paginate(25),
+        };
+        $records->withQueryString();
+
+        return response()->view('invoices.reconciliation', compact('kategori', 'bulan', 'counts', 'records'))
+            ->header('Cache-Control', 'no-store, private');
     }
 
     public function create()
@@ -49,7 +93,10 @@ class InvoiceController extends Controller
 
     public function show(Invoice $invoice)
     {
-        return redirect()->route('invoices.edit', $invoice);
+        $invoice->load('penghuni', 'payment.sewa.kamar');
+
+        return response()->view('invoices.show', compact('invoice'))
+            ->header('Cache-Control', 'no-store, private');
     }
 
     public function edit(Invoice $invoice)

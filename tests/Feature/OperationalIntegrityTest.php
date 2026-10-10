@@ -73,6 +73,42 @@ class OperationalIntegrityTest extends TestCase
         $this->assertSame('aktif', $lease->fresh()->status);
     }
 
+    public function test_overdue_lease_keeps_room_occupied_and_can_be_completed_atomically(): void
+    {
+        $lease = $this->lease(['status' => 'selesai']);
+        $lease->kamar->update(['status' => 'tersedia']);
+        $payload = $this->leasePayload($lease);
+        $payload['status'] = 'menunggak';
+
+        $this->put('/sewas/'.$lease->id, $payload)->assertSessionHasNoErrors();
+        $this->assertSame('menunggak', $lease->fresh()->status);
+        $this->assertSame('terisi', $lease->kamar->fresh()->status);
+
+        $this->post('/kamars/'.$lease->kamar_id.'/selesai-sewa')->assertSessionHasNoErrors();
+        $this->assertSame('selesai', $lease->fresh()->status);
+        $this->assertSame('tersedia', $lease->kamar->fresh()->status);
+    }
+
+    public function test_finishing_room_with_ambiguous_current_leases_rolls_back(): void
+    {
+        $first = $this->lease();
+        $first->kamar->update(['status' => 'terisi']);
+        $second = Sewa::create([
+            'kamar_id' => $first->kamar_id,
+            'penghuni_id' => $first->penghuni_id,
+            'tanggal_masuk' => '2026-12-01',
+            'tanggal_keluar' => '2027-01-01',
+            'biaya_bulanan' => 1000000,
+            'uang_jaminan' => 0,
+            'status' => 'menunggak',
+        ]);
+
+        $this->post('/kamars/'.$first->kamar_id.'/selesai-sewa')->assertSessionHasErrors('sewa');
+        $this->assertSame('aktif', $first->fresh()->status);
+        $this->assertSame('menunggak', $second->fresh()->status);
+        $this->assertSame('terisi', $first->kamar->fresh()->status);
+    }
+
     public function test_updating_lease_cannot_move_into_occupied_room(): void
     {
         $existing = $this->lease();
@@ -167,6 +203,23 @@ class OperationalIntegrityTest extends TestCase
         $this->assertSame('2026-11-01', $lease->fresh()->tanggal_keluar->toDateString());
     }
 
+    public function test_overdue_lease_can_be_extended_without_clearing_debt_status(): void
+    {
+        $lease = $this->lease(['status' => 'menunggak']);
+        $lease->kamar->update(['status' => 'terisi']);
+
+        $this->post('/kamars/'.$lease->kamar_id.'/perpanjang-sewa', [
+            'tanggal_keluar' => '2026-12-01',
+            'biaya_bulanan' => 1100000,
+        ])->assertRedirect('/kamars/sewa')->assertSessionHasNoErrors();
+
+        $lease->refresh();
+        $this->assertSame('menunggak', $lease->status);
+        $this->assertSame('2026-12-01', $lease->tanggal_keluar->toDateString());
+        $this->assertSame('1100000.00', $lease->biaya_bulanan);
+        $this->assertSame('terisi', $lease->kamar->fresh()->status);
+    }
+
     public function test_adjacent_reservation_is_allowed_and_can_be_updated(): void
     {
         $lease = $this->lease();
@@ -242,6 +295,7 @@ class OperationalIntegrityTest extends TestCase
         $this->assertSame('aktif', $lease->fresh()->status);
         $this->assertSame('terisi', $room->fresh()->status);
         $this->assertDatabaseHas('invoices', ['status' => 'lunas', 'jumlah_tagihan' => 3000000]);
+        $this->assertDatabaseHas('keuangans', ['payment_id' => $payment->id, 'jenis' => 'pemasukan', 'jumlah' => 3000000]);
     }
 
     public function test_document_requires_its_own_module_permission(): void

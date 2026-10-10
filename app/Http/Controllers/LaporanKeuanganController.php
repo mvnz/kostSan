@@ -12,14 +12,12 @@ class LaporanKeuanganController extends Controller
 {
     public function index(Request $request)
     {
-        $bulan = $request->string('bulan')->toString();
-        if ($bulan === '') {
-            $bulan = Carbon::now()->format('Y-m');
-        }
+        $filters = $request->validate(['bulan' => ['nullable', 'date_format:Y-m']]);
+        $bulan = $filters['bulan'] ?? Carbon::now()->format('Y-m');
 
         $query = Keuangan::query();
         if ($bulan !== '') {
-            $periode = Carbon::createFromFormat('Y-m', $bulan);
+            $periode = Carbon::createFromFormat('!Y-m', $bulan);
             $query->whereYear('tanggal', $periode->year)
                 ->whereMonth('tanggal', $periode->month);
         }
@@ -34,12 +32,10 @@ class LaporanKeuanganController extends Controller
 
     public function pdf(Request $request)
     {
-        $bulan = $request->string('bulan')->toString();
-        if ($bulan === '') {
-            $bulan = Carbon::now()->format('Y-m');
-        }
+        $filters = $request->validate(['bulan' => ['nullable', 'date_format:Y-m']]);
+        $bulan = $filters['bulan'] ?? Carbon::now()->format('Y-m');
 
-        $periode = Carbon::createFromFormat('Y-m', $bulan);
+        $periode = Carbon::createFromFormat('!Y-m', $bulan);
         $query = Keuangan::query()
             ->whereYear('tanggal', $periode->year)
             ->whereMonth('tanggal', $periode->month);

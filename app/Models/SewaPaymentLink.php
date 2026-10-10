@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SewaPaymentLink extends Model
 {
     protected $fillable = [
         'sewa_id',
+        'payment_id',
         'token',
         'expires_at',
         'used_at',
@@ -27,5 +28,10 @@ class SewaPaymentLink extends Model
     public function sewa(): BelongsTo
     {
         return $this->belongsTo(Sewa::class);
+    }
+
+    public function payment(): BelongsTo
+    {
+        return $this->belongsTo(Pembayaran::class, 'payment_id');
     }
 }

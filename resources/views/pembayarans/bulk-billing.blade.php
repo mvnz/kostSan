@@ -8,7 +8,7 @@ $pageTitle = 'Bulk Billing';
     <div class="page-head-icon"><i class="bx bx-receipt"></i></div>
     <div>
         <h2>Bulk Billing</h2>
-        <p>Pilih sewa aktif yang berlangsung pada bulan ini untuk dibuatkan tagihan.</p>
+        <p>Pilih sewa aktif atau menunggak yang berlangsung pada bulan ini untuk dibuatkan tagihan.</p>
     </div>
 </div>
 
@@ -35,7 +35,7 @@ $pageTitle = 'Bulk Billing';
     <div class="col-md-4">
         <div class="card">
             <div class="card-body p-3">
-                <small style="color:#9aa5b8;font-weight:600;font-size:12px;">Sewa Aktif pada Bulan Ini</small>
+                <small style="color:#9aa5b8;font-weight:600;font-size:12px;">Sewa Berjalan pada Bulan Ini</small>
                 <div style="font-size:20px;font-weight:800;color:#4680ff;margin-top:4px;">{{ $sewas->count() }}</div>
             </div>
         </div>
@@ -80,6 +80,7 @@ $pageTitle = 'Bulk Billing';
                             <th>#</th>
                             <th>Penghuni</th>
                             <th>Kamar</th>
+                            <th>Status Sewa</th>
                             <th class="text-end">Tagihan</th>
                         </tr>
                     </thead>
@@ -90,13 +91,14 @@ $pageTitle = 'Bulk Billing';
                             <td>{{ $i + 1 }}</td>
                             <td>{{ $row['sewa']->penghuni?->nama ?? '-' }}</td>
                             <td>{{ $row['sewa']->kamar?->nomor ?? '-' }}</td>
+                            <td><span class="badge {{ $row['sewa']->status === 'menunggak' ? 'bg-label-warning' : 'bg-label-success' }}">{{ ucfirst($row['sewa']->status) }}</span></td>
                             <td class="text-end fw-semibold">Rp {{ number_format((float)$row['sewa']->biaya_bulanan, 0, ',', '.') }}</td>
                         </tr>
                         @endforeach
                     </tbody>
                     <tfoot>
                         <tr>
-                            <td colspan="4" class="text-end fw-bold">Total jika semua dipilih</td>
+                            <td colspan="5" class="text-end fw-bold">Total jika semua dipilih</td>
                             <td class="text-end fw-bold text-success">
                                 Rp {{ number_format($belumAda->sum(fn($r) => (float)$r['sewa']->biaya_bulanan), 0, ',', '.') }}
                             </td>
@@ -109,7 +111,7 @@ $pageTitle = 'Bulk Billing';
 </form>
 @else
 <div class="alert alert-success">
-    <i class="bx bx-check-circle me-1"></i> Tidak ada sewa aktif yang perlu dibuatkan tagihan untuk periode <strong>{{ $periode->translatedFormat('F Y') }}</strong>.
+    <i class="bx bx-check-circle me-1"></i> Tidak ada sewa berjalan yang perlu dibuatkan tagihan untuk periode <strong>{{ $periode->translatedFormat('F Y') }}</strong>.
 </div>
 @endif
 
@@ -126,6 +128,7 @@ $pageTitle = 'Bulk Billing';
                         <th>#</th>
                         <th>Penghuni</th>
                         <th>Kamar</th>
+                        <th>Status Sewa</th>
                         <th class="text-end">Tagihan</th>
                         <th>Status</th>
                     </tr>
@@ -136,6 +139,7 @@ $pageTitle = 'Bulk Billing';
                         <td>{{ $i + 1 }}</td>
                         <td>{{ $row['sewa']->penghuni?->nama ?? '-' }}</td>
                         <td>{{ $row['sewa']->kamar?->nomor ?? '-' }}</td>
+                        <td><span class="badge {{ $row['sewa']->status === 'menunggak' ? 'bg-label-warning' : 'bg-label-success' }}">{{ ucfirst($row['sewa']->status) }}</span></td>
                         <td class="text-end">Rp {{ number_format((float)$row['sewa']->biaya_bulanan, 0, ',', '.') }}</td>
                         <td><span class="badge bg-label-success" style="font-size:11px;">Sudah Ada</span></td>
                     </tr>

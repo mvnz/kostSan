@@ -28,7 +28,7 @@ class SendSewaExpiryReminderCommand extends Command
 
         $sewas = Sewa::query()
             ->with(['penghuni', 'kamar'])
-            ->where('status', 'aktif')
+            ->whereIn('status', ['aktif', 'menunggak'])
             ->whereNotNull('tanggal_keluar')
             ->whereDate('tanggal_keluar', '>=', $today)
             ->whereDate('tanggal_keluar', '<=', $endWindow)

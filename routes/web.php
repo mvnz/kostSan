@@ -20,6 +20,7 @@ use App\Http\Controllers\SecureFileController;
 use App\Http\Controllers\SewaController;
 use App\Http\Controllers\SewaPaymentRegistrationController;
 use App\Http\Controllers\UserManagementController;
+use App\Models\FileCleanupJob;
 use App\Models\Keuangan;
 use App\Models\Kamar;
 use App\Models\Pembayaran;
@@ -50,6 +51,7 @@ Route::middleware(['auth', 'menu.permission'])->group(function () {
 Route::get('/', function () {
     $totalKamar = Kamar::count();
     $kamarTersedia = Kamar::where('status', 'tersedia')->count();
+    $kamarTerisi = Kamar::where('status', 'terisi')->count();
     $totalPemasukan = Keuangan::where('jenis', 'pemasukan')->sum('jumlah');
     $totalPengeluaran = Keuangan::where('jenis', 'pengeluaran')->sum('jumlah');
 
@@ -77,26 +79,28 @@ Route::get('/', function () {
     $hunianPct = [];
     for ($offset = 5; $offset >= 0; $offset--) {
         $bulan = Carbon::now()->startOfMonth()->subMonths($offset);
-        $awal = $bulan->copy()->startOfMonth();
-        $akhir = $bulan->copy()->endOfMonth();
         $hunianLabels[] = $bulan->translatedFormat('M');
-        $terisi = Sewa::where('tanggal_masuk', '<=', $akhir)
-            ->where(function ($q) use ($awal) {
-                $q->whereNull('tanggal_keluar')
-                  ->orWhere('tanggal_keluar', '>=', $awal);
-            })
-            ->count();
+        $terisi = app(\App\Services\MonthlyOccupancy::class)->rooms($bulan, includeCompleted: true);
         $hunianData[] = $terisi;
         $hunianPct[] = $totalKamar > 0 ? round($terisi / $totalKamar * 100) : 0;
     }
 
     $stat = [
         'total_kamar' => $totalKamar,
-        'kamar_terisi' => max($totalKamar - $kamarTersedia, 0),
+        'kamar_terisi' => $kamarTerisi,
         'kamar_tersedia' => $kamarTersedia,
-        'penghuni_aktif' => Sewa::where('status', 'aktif')->distinct('penghuni_id')->count('penghuni_id'),
+        'penghuni_aktif' => Sewa::whereIn('status', ['aktif', 'menunggak'])
+            ->whereDate('tanggal_masuk', '<=', today())
+            ->where(fn ($leases) => $leases->whereNull('tanggal_keluar')->orWhereDate('tanggal_keluar', '>', today()))
+            ->distinct('penghuni_id')->count('penghuni_id'),
         'total_penghuni' => Penghuni::count(),
-        'total_reservasi' => Reservasi::count(),
+        'reservasi_aktif' => Reservasi::query()
+            ->whereIn('status', ['menunggu', 'dikonfirmasi'])
+            ->where(function ($query): void {
+                $query->whereNull('rencana_keluar')
+                    ->orWhereDate('rencana_keluar', '>', today());
+            })
+            ->count(),
         'tagihan_belum_lunas' => Pembayaran::where('status', 'belum_lunas')->sum('jumlah'),
         'total_pemasukan' => $totalPemasukan,
         'total_pengeluaran' => $totalPengeluaran,
@@ -135,13 +139,13 @@ Route::get('/', function () {
 
     $sewaTerbaru = Sewa::with(['kamar', 'penghuni'])->latest()->take(5)->get();
 
-    $hariIni = Carbon::today();
-    $batasAkhir = Carbon::today()->addDays(7);
+    $hariIni = Carbon::today()->startOfDay();
+    $batasAkhir = $hariIni->copy()->addDays(7);
     $sewaAkanBerakhir = Sewa::with(['kamar', 'penghuni'])
-        ->where('status', 'aktif')
+        ->whereIn('status', ['aktif', 'menunggak'])
         ->whereNotNull('tanggal_keluar')
-        ->whereDate('tanggal_keluar', '>=', $hariIni)
-        ->whereDate('tanggal_keluar', '<=', $batasAkhir)
+        ->whereDate('tanggal_keluar', '>=', $hariIni->toDateString())
+        ->whereDate('tanggal_keluar', '<=', $batasAkhir->toDateString())
         ->orderBy('tanggal_keluar')
         ->get();
 
@@ -150,10 +154,19 @@ Route::get('/', function () {
 
     $penghuniTerbaru = Penghuni::latest()->take(5)->get();
 
+    $cleanupStats = FileCleanupJob::query()
+        ->selectRaw('COUNT(*) as pending_count, MAX(attempts) as max_attempts, MIN(created_at) as oldest_at')
+        ->first();
+    $cleanupQueue = [
+        'count' => (int) $cleanupStats->pending_count,
+        'max_attempts' => (int) ($cleanupStats->max_attempts ?? 0),
+        'oldest_at' => $cleanupStats->oldest_at ? Carbon::parse($cleanupStats->oldest_at) : null,
+    ];
+
     return view('dashboard', compact(
         'stat', 'sewaTerbaru', 'sewaAkanBerakhir',
         'chartData', 'hunianChart', 'kamarKosong',
-        'pembayaranTerbaru', 'penghuniTerbaru'
+        'pembayaranTerbaru', 'penghuniTerbaru', 'cleanupQueue'
     ));
 })->name('dashboard');
 
@@ -178,12 +191,18 @@ Route::get('sewas/pilih-kamar', function () {
 })->name('sewas.pilih-kamar');
 Route::resource('sewas', SewaController::class);
 Route::post('sewas/payment-links', [SewaPaymentRegistrationController::class, 'generate'])->name('sewa-payment-registrations.generate');
+Route::post('pembayarans/{pembayaran}/payment-link', [SewaPaymentRegistrationController::class, 'generateForPayment'])->name('payment-registrations.generate');
 Route::get('pembayarans/export', [PembayaranController::class, 'export'])->name('pembayarans.export');
 Route::resource('pembayarans', PembayaranController::class);
 Route::post('pembayarans/{pembayaran}/approve', [PembayaranController::class, 'approve'])->name('pembayarans.approve');
+Route::post('pembayarans/{pembayaran}/reverse', [PembayaranController::class, 'reverse'])->name('pembayarans.reverse');
 Route::get('pembayarans-bulk', [PembayaranController::class, 'bulkBilling'])->name('pembayarans.bulk-billing');
 Route::post('pembayarans-bulk', [PembayaranController::class, 'storeBulkBilling'])->name('pembayarans.bulk-billing.store');
 Route::resource('reservasis', ReservasiController::class);
+Route::get('keuangans/export', [KeuanganController::class, 'export'])->name('keuangans.export');
+Route::get('keuangans/reconciliation', [KeuanganController::class, 'reconciliation'])->name('keuangans.reconciliation');
+Route::post('keuangans/reconciliation/{pembayaran}/ledger-link', [KeuanganController::class, 'attachManualIncome'])->name('keuangans.reconciliation.attach');
+Route::delete('keuangans/reconciliation/{pembayaran}/ledger-link', [KeuanganController::class, 'detachManualIncome'])->name('keuangans.reconciliation.detach');
 Route::resource('keuangans', KeuanganController::class);
 Route::get('laporan-keuangan', [LaporanKeuanganController::class, 'index'])->name('laporan-keuangan.index');
 Route::get('laporan-keuangan/pdf', [LaporanKeuanganController::class, 'pdf'])->name('laporan-keuangan.pdf');
@@ -195,6 +214,7 @@ Route::get('secure-files/{path}', [SecureFileController::class, 'show'])->where(
 
 // Kontrak Sewa PDF
 Route::get('sewas/{sewa}/kontrak', [SewaController::class, 'kontrak'])->name('sewas.kontrak');
+Route::get('invoices/reconciliation', [InvoiceController::class, 'reconciliation'])->name('invoices.reconciliation');
 Route::resource('invoices', InvoiceController::class);
 Route::post('invoices/refresh-from-payments', [InvoiceController::class, 'refreshFromPayments'])->name('invoices.refresh-from-payments');
 Route::post('invoices/{invoice}/send', [InvoiceController::class, 'send'])->name('invoices.send');

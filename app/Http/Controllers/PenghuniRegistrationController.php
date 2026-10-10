@@ -7,6 +7,8 @@ use App\Models\Penghuni;
 use App\Models\PenghuniRegistrationLink;
 use App\Models\Sewa;
 use App\Models\SewaPaymentLink;
+use App\Services\PrivateUpload;
+use App\Services\PrivateFileCleanup;
 use App\Services\RoomAvailability;
 use App\Services\WhatsAppService;
 use Carbon\Carbon;
@@ -85,74 +87,92 @@ class PenghuniRegistrationController extends Controller
             'foto_selfie' => ['required', 'image', 'max:4096'],
         ]);
 
-        $created = DB::transaction(function () use ($token, $validated, $request) {
-            $link = PenghuniRegistrationLink::with('kamar')->where('token', $token)->lockForUpdate()->first();
+        $uploads = [];
+        $committed = false;
+        try {
+            $created = DB::transaction(function () use ($token, $validated, $request, &$uploads, &$committed) {
+                $link = PenghuniRegistrationLink::with('kamar')->where('token', $token)->lockForUpdate()->first();
 
-            if (! $link || $link->isExpired()) {
-                return null;
+                if (! $link || $link->isExpired()) {
+                    return null;
+                }
+
+                $kamar = $link->kamar_id ? Kamar::whereKey($link->kamar_id)->lockForUpdate()->firstOrFail() : null;
+                if ($kamar === null && ! empty($validated['nomor_kamar'])) {
+                    $kamar = Kamar::where('nomor', trim((string) $validated['nomor_kamar']))->lockForUpdate()->first();
+                }
+
+                if ($kamar) {
+                    $validated['nomor_kamar'] = (string) $kamar->nomor;
+                    $validated['harga_sewa'] = (float) $kamar->harga_bulanan;
+                }
+
+                $lamaBulan = max(1, (int) ($validated['waktu_sewa_bulan'] ?? 1));
+                $tanggalMasukForMeta = ! empty($validated['tanggal_mulai_tinggal'])
+                    ? Carbon::parse($validated['tanggal_mulai_tinggal'])
+                    : Carbon::today();
+
+                $validated['lama_sewa_bulan'] = $lamaBulan;
+                $validated['tanggal_jatuh_tempo'] = (clone $tanggalMasukForMeta)->addMonthsNoOverflow($lamaBulan)->toDateString();
+
+                if ($kamar) {
+                    app(RoomAvailability::class)->assertAvailable($kamar, $tanggalMasukForMeta->toDateString(), $validated['tanggal_jatuh_tempo']);
+                }
+
+                $validated['foto_ktp_path'] = app(PrivateUpload::class)->store($request->file('foto_ktp'), 'penghuni-dokumen/ktp', 'foto_ktp');
+                $uploads[] = $validated['foto_ktp_path'];
+                $validated['foto_selfie_path'] = app(PrivateUpload::class)->store($request->file('foto_selfie'), 'penghuni-dokumen/selfie', 'foto_selfie');
+                $uploads[] = $validated['foto_selfie_path'];
+
+                unset($validated['waktu_sewa_bulan']);
+
+                $penghuni = Penghuni::create($validated);
+                $paymentLinkUrl = null;
+
+                if ($kamar) {
+                    $tanggalMasuk = $tanggalMasukForMeta->copy();
+                    $tanggalKeluar = (clone $tanggalMasuk)->addMonthsNoOverflow($lamaBulan);
+
+                    $sewa = Sewa::create([
+                        'kamar_id' => $kamar->id,
+                        'penghuni_id' => $penghuni->id,
+                        'tanggal_masuk' => $tanggalMasuk->toDateString(),
+                        'tanggal_keluar' => $tanggalKeluar->toDateString(),
+                        'biaya_bulanan' => (float) ($validated['harga_sewa'] ?? $kamar->harga_bulanan ?? 0),
+                        'uang_jaminan' => 0,
+                        'status' => 'menunggak',
+                        'catatan' => 'AUTO: dibuat dari link pendaftaran penghuni, menunggu approval pembayaran',
+                    ]);
+
+                    $paymentLink = SewaPaymentLink::create([
+                        'sewa_id' => $sewa->id,
+                        'token' => Str::random(64),
+                        'expires_at' => now()->addDays(7),
+                    ]);
+
+                    $paymentLinkUrl = route('sewa-payment-registrations.show', $paymentLink->token);
+                }
+
+                $link->update(['used_at' => now()]);
+                DB::afterCommit(function () use (&$committed): void {
+                    $committed = true;
+                });
+
+                return [
+                    'penghuni' => $penghuni,
+                    'payment_link_url' => $paymentLinkUrl,
+                ];
+            });
+        } catch (\Throwable $exception) {
+            if (! $committed) {
+                foreach ($uploads as $path) {
+                    if ($path) {
+                        app(PrivateFileCleanup::class)->deleteOrQueue($path, 'resident registration rollback');
+                    }
+                }
             }
-
-            $kamar = $link->kamar_id ? Kamar::whereKey($link->kamar_id)->lockForUpdate()->firstOrFail() : null;
-            if ($kamar === null && ! empty($validated['nomor_kamar'])) {
-                $kamar = Kamar::where('nomor', trim((string) $validated['nomor_kamar']))->lockForUpdate()->first();
-            }
-
-            if ($kamar) {
-                $validated['nomor_kamar'] = (string) $kamar->nomor;
-                $validated['harga_sewa'] = (float) $kamar->harga_bulanan;
-            }
-
-            $lamaBulan = max(1, (int) ($validated['waktu_sewa_bulan'] ?? 1));
-            $tanggalMasukForMeta = ! empty($validated['tanggal_mulai_tinggal'])
-                ? Carbon::parse($validated['tanggal_mulai_tinggal'])
-                : Carbon::today();
-
-            $validated['lama_sewa_bulan'] = $lamaBulan;
-            $validated['tanggal_jatuh_tempo'] = (clone $tanggalMasukForMeta)->addMonthsNoOverflow($lamaBulan)->toDateString();
-
-            if ($kamar) {
-                app(RoomAvailability::class)->assertAvailable($kamar, $tanggalMasukForMeta->toDateString(), $validated['tanggal_jatuh_tempo']);
-            }
-
-            $validated['foto_ktp_path'] = $request->file('foto_ktp')->store('penghuni-dokumen/ktp', 'local');
-            $validated['foto_selfie_path'] = $request->file('foto_selfie')->store('penghuni-dokumen/selfie', 'local');
-
-            unset($validated['waktu_sewa_bulan']);
-
-            $penghuni = Penghuni::create($validated);
-            $paymentLinkUrl = null;
-
-            if ($kamar) {
-                $tanggalMasuk = $tanggalMasukForMeta->copy();
-                $tanggalKeluar = (clone $tanggalMasuk)->addMonthsNoOverflow($lamaBulan);
-
-                $sewa = Sewa::create([
-                    'kamar_id' => $kamar->id,
-                    'penghuni_id' => $penghuni->id,
-                    'tanggal_masuk' => $tanggalMasuk->toDateString(),
-                    'tanggal_keluar' => $tanggalKeluar->toDateString(),
-                    'biaya_bulanan' => (float) ($validated['harga_sewa'] ?? $kamar->harga_bulanan ?? 0),
-                    'uang_jaminan' => 0,
-                    'status' => 'menunggak',
-                    'catatan' => 'AUTO: dibuat dari link pendaftaran penghuni, menunggu approval pembayaran',
-                ]);
-
-                $paymentLink = SewaPaymentLink::create([
-                    'sewa_id' => $sewa->id,
-                    'token' => Str::random(64),
-                    'expires_at' => now()->addDays(7),
-                ]);
-
-                $paymentLinkUrl = route('sewa-payment-registrations.show', $paymentLink->token);
-            }
-
-            $link->update(['used_at' => now()]);
-
-            return [
-                'penghuni' => $penghuni,
-                'payment_link_url' => $paymentLinkUrl,
-            ];
-        });
+            throw $exception;
+        }
 
         if (! $created) {
             return view('penghuni-registrations.expired');

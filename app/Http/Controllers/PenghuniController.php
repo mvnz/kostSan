@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Penghuni;
+use App\Services\PrivateFileCleanup;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class PenghuniController extends Controller
 {
@@ -17,7 +19,7 @@ class PenghuniController extends Controller
 
     public function create()
     {
-        return view('penghunis.form', ['penghuni' => new Penghuni()]);
+        return view('penghunis.form', ['penghuni' => new Penghuni]);
     }
 
     public function store(Request $request)
@@ -58,7 +60,11 @@ class PenghuniController extends Controller
 
     public function show(Penghuni $penghuni)
     {
-        return redirect()->route('penghunis.edit', $penghuni);
+        $penghuni->loadCount(['sewas', 'reservasis', 'invoices']);
+
+        return response()
+            ->view('penghunis.show', compact('penghuni'))
+            ->header('Cache-Control', 'no-store, private');
     }
 
     public function edit(Penghuni $penghuni)
@@ -112,8 +118,19 @@ class PenghuniController extends Controller
                 ->with('error', 'Data penghuni tidak dapat dihapus karena masih memiliki relasi pada data sewa, reservasi, atau invoice.');
         }
 
+        $documents = array_filter([
+            $penghuni->foto_ktp_path,
+            $penghuni->foto_selfie_path,
+        ]);
+
         try {
-            $penghuni->delete();
+            DB::transaction(function () use ($penghuni, $documents): void {
+                $penghuni = Penghuni::whereKey($penghuni->id)->lockForUpdate()->firstOrFail();
+                $penghuni->delete();
+                foreach ($documents as $path) {
+                    DB::afterCommit(fn () => app(PrivateFileCleanup::class)->deleteOrQueue($path, 'resident delete'));
+                }
+            });
         } catch (QueryException $exception) {
             return redirect()
                 ->route('penghunis.index')

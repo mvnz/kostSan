@@ -19,7 +19,7 @@ class KamarController extends Controller
     {
         KamarFloor::syncFromKamars();
 
-        $kamars = Kamar::orderBy('nomor')->get();
+        $kamars = Kamar::withCount(['sewas', 'reservasis', 'confirmedReservations'])->orderBy('nomor')->get();
         $floorsByNumber = KamarFloor::orderBy('number')->pluck('name', 'number');
 
         return view('kamars.index', compact('kamars', 'floorsByNumber'));
@@ -32,12 +32,12 @@ class KamarController extends Controller
 
         $kamars = Kamar::with([
             'sewas' => fn ($q) => $q->with('penghuni')->latest(),
-        ])->orderBy('nomor')->get();
+        ])->withCount('confirmedReservations')->orderBy('nomor')->get();
 
         $counts = [
             'tersedia' => $kamars->where('status', 'tersedia')->count(),
             'terisi' => $kamars->where('status', 'terisi')->count(),
-            'reservasi' => $kamars->where('status', 'reservasi')->count(),
+            'reservasi' => $kamars->where('confirmed_reservations_count', '>', 0)->count(),
             'perbaikan' => $kamars->where('status', 'perbaikan')->count(),
         ];
 
@@ -76,7 +76,9 @@ class KamarController extends Controller
 
     public function show(Kamar $kamar)
     {
-        return redirect()->route('kamars.edit', $kamar);
+        $kamar->loadCount(['sewas', 'reservasis']);
+
+        return view('kamars.show', compact('kamar'));
     }
 
     public function edit(Kamar $kamar)
@@ -113,11 +115,21 @@ class KamarController extends Controller
 
     public function selesaiSewa(Kamar $kamar)
     {
-        Sewa::where('kamar_id', $kamar->id)
-            ->where('status', 'aktif')
-            ->update(['status' => 'selesai']);
+        DB::transaction(function () use ($kamar): void {
+            $kamar = Kamar::whereKey($kamar->id)->lockForUpdate()->firstOrFail();
+            $sewas = Sewa::where('kamar_id', $kamar->id)
+                ->whereIn('status', ['aktif', 'menunggak'])
+                ->lockForUpdate()
+                ->get();
+            if ($sewas->count() !== 1) {
+                throw ValidationException::withMessages([
+                    'sewa' => 'Penyelesaian membutuhkan tepat satu sewa aktif atau menunggak. Periksa Data Sewa.',
+                ]);
+            }
 
-        $kamar->update(['status' => 'tersedia']);
+            $sewas->first()->update(['status' => 'selesai']);
+            $kamar->update(['status' => 'tersedia']);
+        });
 
         return redirect()->route('kamars.sewa')->with('success', 'Sewa kamar '.$kamar->nomor.' telah diselesaikan.');
     }
@@ -131,9 +143,9 @@ class KamarController extends Controller
 
         DB::transaction(function () use ($request, $kamar): void {
             $kamar = Kamar::whereKey($kamar->id)->lockForUpdate()->firstOrFail();
-            $sewas = Sewa::where('kamar_id', $kamar->id)->where('status', 'aktif')->lockForUpdate()->get();
+            $sewas = Sewa::where('kamar_id', $kamar->id)->whereIn('status', ['aktif', 'menunggak'])->lockForUpdate()->get();
             if ($sewas->count() !== 1) {
-                throw ValidationException::withMessages(['tanggal_keluar' => 'Perpanjangan membutuhkan tepat satu sewa aktif. Periksa Data Sewa.']);
+                throw ValidationException::withMessages(['tanggal_keluar' => 'Perpanjangan membutuhkan tepat satu sewa aktif atau menunggak. Periksa Data Sewa.']);
             }
             $sewa = $sewas->first();
             $newEnd = Carbon::parse($request->tanggal_keluar);
@@ -179,7 +191,22 @@ class KamarController extends Controller
 
     public function destroy(Kamar $kamar)
     {
-        $kamar->delete();
+        $deleted = DB::transaction(function () use ($kamar): bool {
+            $kamar = Kamar::whereKey($kamar->id)->lockForUpdate()->firstOrFail();
+            if ($kamar->sewas()->exists() || $kamar->reservasis()->exists()) {
+                return false;
+            }
+
+            $kamar->delete();
+
+            return true;
+        });
+
+        if (! $deleted) {
+            return redirect()
+                ->route('kamars.index')
+                ->with('error', 'Kamar tidak dapat dihapus karena memiliki histori sewa atau reservasi. Pertahankan data untuk audit operasional.');
+        }
 
         return redirect()->route('kamars.index')->with('success', 'Data kamar berhasil dihapus.');
     }

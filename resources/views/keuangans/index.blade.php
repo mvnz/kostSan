@@ -12,6 +12,9 @@ $pageTitle = 'Keuangan';
     </div>
 </div>
 
+@canMenu('manajemen_sewa.data_sewa', 'view')
+<a href="{{ route('keuangans.reconciliation') }}" class="btn btn-outline-primary mb-3">Rekonsiliasi Pembayaran–Keuangan</a>
+@endCanMenu
 <div class="row g-3 mb-4">
     <div class="col-md-3 col-6">
         <div class="card h-100">
@@ -54,7 +57,7 @@ $pageTitle = 'Keuangan';
     <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-3">
         <div class="card-title mb-0">
             <h5 class="mb-1">Pencatatan Keuangan</h5>
-            <small class="text-body-secondary">Kas masuk dan keluar operasional kost.</small>
+            <small class="text-body-secondary">Kas masuk dan keluar operasional kost. CSV mengikuti filter bulan/jenis; pencarian tabel tidak mengubah ekspor.</small>
         </div>
         <div class="d-flex gap-2 flex-wrap">
             <select id="filter-jenis-keuangan" class="form-select" style="min-width: 165px;">
@@ -64,7 +67,7 @@ $pageTitle = 'Keuangan';
             </select>
             <input type="month" id="filter-bulan-keuangan" class="form-control" style="min-width: 175px;" value="{{ now()->format('Y-m') }}" data-current-month="{{ now()->format('Y-m') }}">
             <button type="button" class="btn btn-outline-secondary" id="reset-filter-keuangan"><i class="bx bx-reset me-1"></i>Reset</button>
-            <button class="btn btn-outline-secondary"><i class="bx bx-export me-1"></i>Export</button>
+            <a id="export-keuangan" href="{{ route('keuangans.export', ['bulan' => now()->format('Y-m')]) }}" data-export-url="{{ route('keuangans.export') }}" class="btn btn-outline-secondary"><i class="bx bx-export me-1"></i>Export CSV</a>
             @canMenu('keuangan.data_keuangan', 'create')
             <a href="{{ route('keuangans.create') }}" class="btn btn-primary"><i class="bx bx-plus me-1"></i>Tambah Transaksi</a>
             @endCanMenu
@@ -112,7 +115,16 @@ $pageTitle = 'Keuangan';
                         @endif
                     </td>
                     <td>Rp {{ number_format((float)$item->jumlah,0,',','.') }}</td>
-                    <td>{{ $item->deskripsi ?: '-' }}</td>
+                    <td>
+                        {{ $item->deskripsi ?: '-' }}
+                        @if($item->manually_linked_at)
+                            <span class="badge bg-label-warning d-block mt-1" style="width: fit-content;">Rekonsiliasi manual · Pembayaran #{{ $item->payment_id }}</span>
+                        @elseif($item->payment_id)
+                            <span class="badge bg-label-info d-block mt-1" style="width: fit-content;">Otomatis · Pembayaran #{{ $item->payment_id }}</span>
+                        @elseif($item->reversalSource)
+                            <span class="badge bg-label-warning d-block mt-1" style="width: fit-content;">Pembalikan · Pembayaran #{{ $item->reversalSource->payment_id }}</span>
+                        @endif
+                    </td>
                     <td>
                         @if($item->bukti_path)
                             <a href="{{ route('secure-files.show', ['path' => $item->bukti_path]) }}" target="_blank" class="btn btn-sm btn-outline-info">
@@ -124,9 +136,18 @@ $pageTitle = 'Keuangan';
                     </td>
                     <td>
                         <div class="d-flex align-items-center flex-wrap gap-1">
-                            <a href="{{ route('keuangans.show', $item) }}" class="btn btn-sm btn-action-detail">
-                                <i class="icon-base bx bx-detail me-1"></i>Detail
-                            </a>
+                            @if($item->payment_id || $item->reversalSource)
+                                @canMenu('manajemen_sewa.data_sewa', 'view')
+                                <a href="{{ route('pembayarans.show', $item->payment_id ?? $item->reversalSource->payment_id) }}" class="btn btn-sm btn-action-detail">
+                                    <i class="icon-base bx bx-receipt me-1"></i>Pembayaran
+                                </a>
+                                @else
+                                <span class="text-body-secondary small">{{ $item->manually_linked_at ? 'Rekonsiliasi manual' : ($item->reversalSource ? 'Pembalikan otomatis' : 'Sumber otomatis') }}</span>
+                                @endCanMenu
+                            @else
+                                <a href="{{ route('keuangans.show', $item) }}" class="btn btn-sm btn-action-detail">
+                                    <i class="icon-base bx bx-detail me-1"></i>Detail
+                                </a>
                             @canMenu('keuangan.data_keuangan', 'update')
                             <a href="{{ route('keuangans.edit', $item) }}" class="btn btn-sm btn-edit-fancy">
                                 <i class="icon-base bx bx-edit-alt me-1"></i>Edit
@@ -138,6 +159,7 @@ $pageTitle = 'Keuangan';
                                 <button type="submit" class="btn btn-sm btn-action-danger"><i class="icon-base bx bx-trash me-1"></i>Delete</button>
                             </form>
                             @endCanMenu
+                            @endif
                         </div>
                     </td>
                 </tr>
@@ -162,6 +184,11 @@ $pageTitle = 'Keuangan';
             table.column(colJenis).search(jenis ? ('JENIS:' + jenis) : '', false, false);
             table.column(colTransaksi).search(bulan ? ('BULAN:' + bulan) : '', false, false);
             table.draw();
+            const exportLink = document.getElementById('export-keuangan');
+            const exportUrl = new URL(exportLink.dataset.exportUrl, window.location.origin);
+            if (jenis) exportUrl.searchParams.set('jenis', jenis);
+            if (bulan) exportUrl.searchParams.set('bulan', bulan);
+            exportLink.href = exportUrl.toString();
         }
 
         $('#filter-jenis-keuangan, #filter-bulan-keuangan').on('change', applyKeuanganFilters);

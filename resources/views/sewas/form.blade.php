@@ -1,5 +1,6 @@
 @php
 $pageTitle = $sewa->exists ? 'Edit Sewa' : 'Tambah Sewa';
+$reservasi = $reservasi ?? null;
 @endphp
 @extends('layouts.app')
 
@@ -17,6 +18,13 @@ $pageTitle = $sewa->exists ? 'Edit Sewa' : 'Tambah Sewa';
         <form method="POST" action="{{ $sewa->exists ? route('sewas.update', $sewa) : route('sewas.store') }}" enctype="multipart/form-data">
             @csrf
             @if($sewa->exists) @method('PUT') @endif
+            @if(!$sewa->exists && $reservasi)
+            <input type="hidden" name="reservasi_id" value="{{ $reservasi->id }}">
+            <div class="alert alert-info">
+                <i class="bx bx-transfer me-1"></i>
+                Mengonversi reservasi #{{ $reservasi->id }} untuk {{ $reservasi->penghuni?->nama ?? '-' }} di kamar {{ $reservasi->kamar?->nomor ?? '-' }}. Reservasi akan ditutup setelah sewa berhasil disimpan.
+            </div>
+            @endif
 
             <div class="row">
                 <div class="col-md-6 mb-3">
@@ -38,7 +46,7 @@ $pageTitle = $sewa->exists ? 'Edit Sewa' : 'Tambah Sewa';
                     <select name="penghuni_id" class="form-select" required>
                         <option value="">Pilih penghuni</option>
                         @foreach($penghunis as $penghuni)
-                        <option value="{{ $penghuni->id }}" @selected((string) old('penghuni_id', $sewa->penghuni_id) === (string) $penghuni->id)>
+                        <option value="{{ $penghuni->id }}" @selected((string) old('penghuni_id', $reservasi?->penghuni_id ?? $sewa->penghuni_id) === (string) $penghuni->id)>
                             {{ $penghuni->nama }}
                         </option>
                         @endforeach
@@ -50,7 +58,7 @@ $pageTitle = $sewa->exists ? 'Edit Sewa' : 'Tambah Sewa';
                 <div class="col-md-3 mb-3">
                     <label class="form-label fw-semibold">Tanggal Masuk</label>
                     <input type="date" name="tanggal_masuk" id="tanggal_masuk" class="form-control"
-                        value="{{ old('tanggal_masuk', optional($sewa->tanggal_masuk)->format('Y-m-d') ?? now()->format('Y-m-d')) }}" required>
+                        value="{{ old('tanggal_masuk', optional($reservasi?->rencana_masuk ?? $sewa->tanggal_masuk)->format('Y-m-d') ?? now()->format('Y-m-d')) }}" required>
                 </div>
                 <div class="col-md-3 mb-3">
                     <label class="form-label fw-semibold">Lama Sewa</label>
@@ -66,7 +74,7 @@ $pageTitle = $sewa->exists ? 'Edit Sewa' : 'Tambah Sewa';
                 <div class="col-md-3 mb-3">
                     <label class="form-label fw-semibold">Tanggal Keluar</label>
                     <input type="date" name="tanggal_keluar" id="tanggal_keluar" class="form-control"
-                        value="{{ old('tanggal_keluar', optional($sewa->tanggal_keluar)->format('Y-m-d')) }}">
+                        value="{{ old('tanggal_keluar', optional($reservasi?->rencana_keluar ?? $sewa->tanggal_keluar)->format('Y-m-d')) }}">
                     <small class="text-body-secondary">Otomatis dari tanggal masuk + lama sewa</small>
                 </div>
                 <div class="col-md-3 mb-3">

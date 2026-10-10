@@ -5,12 +5,16 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
 class Pembayaran extends Model
 {
     protected $fillable = [
         'sewa_id',
+        'coverage_start',
+        'coverage_end',
+        'overlap_override_reason',
         'periode',
         'tanggal_bayar',
         'metode',
@@ -22,6 +26,8 @@ class Pembayaran extends Model
 
     protected $casts = [
         'periode' => 'date',
+        'coverage_start' => 'date',
+        'coverage_end' => 'date',
         'tanggal_bayar' => 'date',
         'jumlah' => 'decimal:2',
     ];
@@ -41,6 +47,21 @@ class Pembayaran extends Model
     public function invoice(): HasOne
     {
         return $this->hasOne(Invoice::class, 'payment_id');
+    }
+
+    public function ledgerEntry(): HasOne
+    {
+        return $this->hasOne(Keuangan::class, 'payment_id');
+    }
+
+    public function reversal(): HasOne
+    {
+        return $this->hasOne(PaymentReversal::class, 'payment_id');
+    }
+
+    public function linkAudits(): HasMany
+    {
+        return $this->hasMany(FinancePaymentLinkAudit::class, 'payment_id');
     }
 
     public function syncInvoiceFromPayment(): void

@@ -24,7 +24,7 @@ class LogActivity
 
         $routeName = $request->route()?->getName();
 
-        if (!$routeName || in_array($routeName, $this->skipRouteNames, true)) {
+        if (! $routeName || in_array($routeName, $this->skipRouteNames, true)) {
             return $next($request);
         }
 
@@ -46,7 +46,7 @@ class LogActivity
 
         if ($exception) {
             $status = 'gagal';
-            $description = 'Terjadi error: ' . $exception->getMessage();
+            $description = 'Terjadi error: '.$exception->getMessage();
         } elseif ($response) {
             if ($response->getStatusCode() >= 400) {
                 $status = 'gagal';
@@ -68,7 +68,7 @@ class LogActivity
             }
         }
 
-        if (!$description) {
+        if (! $description) {
             $description = $this->describeRoute($routeName, $request);
         }
 
@@ -85,7 +85,7 @@ class LogActivity
             'description' => $description ? Str::limit($description, 1000) : null,
             'method' => $request->method(),
             'route_name' => $routeName,
-            'url' => $request->fullUrl(),
+            'url' => $this->sanitizedUrl($request),
             'ip_address' => $request->ip(),
             'user_agent' => (string) $request->userAgent(),
             'created_at' => now(),
@@ -112,9 +112,24 @@ class LogActivity
     private function describeRoute(string $routeName, Request $request): string
     {
         return match (true) {
-            $routeName === 'login.attempt' => 'Percobaan login untuk email: ' . (string) $request->input('email'),
+            $routeName === 'login.attempt' => 'Percobaan login untuk email: '.(string) $request->input('email'),
             $routeName === 'logout' => 'Logout dari sistem.',
-            default => strtoupper($request->method()) . ' pada ' . $routeName,
+            default => strtoupper($request->method()).' pada '.$routeName,
         };
+    }
+
+    private function sanitizedUrl(Request $request): string
+    {
+        // Mutation query strings are not needed for audit and may contain secrets.
+        $url = $request->url();
+        foreach ($request->route()?->parameters() ?? [] as $name => $value) {
+            if (! preg_match('/token|signature|secret|key/i', (string) $name) || ! is_scalar($value)) {
+                continue;
+            }
+            $plain = (string) $value;
+            $url = str_replace([$plain, rawurlencode($plain)], '[REDACTED]', $url);
+        }
+
+        return Str::limit($url, 500, '');
     }
 }

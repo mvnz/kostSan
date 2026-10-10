@@ -99,6 +99,28 @@
 
 <div class="dashboard-modern">
 
+@if(($cleanupQueue['count'] ?? 0) > 0)
+<div class="alert alert-warning d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-6" role="alert">
+    <div class="d-flex align-items-start gap-3">
+        <i class="icon-base bx bx-error-circle fs-3 flex-shrink-0" aria-hidden="true"></i>
+        <div>
+            <strong>Antrean file privat perlu ditangani</strong>
+            <div class="small mt-1">
+                {{ $cleanupQueue['count'] }} file menunggu pembersihan;
+                Percobaan tertinggi: {{ $cleanupQueue['max_attempts'] }}.
+                @if($cleanupQueue['oldest_at'])
+                    Antrean tertua {{ $cleanupQueue['oldest_at']->diffForHumans() }}.
+                @endif
+            </div>
+        </div>
+    </div>
+    <div class="small text-md-end">
+        Minta admin server memeriksa<br>
+        <code class="text-break">php artisan private-files:cleanup --dry-run</code>
+    </div>
+</div>
+@endif
+
 {{-- ══ ROW 1: Welcome Card + 2 KPI Cards ══ --}}
 <div class="row">
 
@@ -463,8 +485,8 @@
                             </span>
                         </div>
                         <div class="d-flex w-100 flex-wrap align-items-center justify-content-between gap-2">
-                            <div class="me-2"><h6 class="mb-0">Reservasi</h6><small>Calon penghuni</small></div>
-                            <div class="user-progress"><h6 class="mb-0">{{ $stat['total_reservasi'] }}</h6></div>
+                            <div class="me-2"><h6 class="mb-0">Reservasi Aktif</h6><small>Menunggu / dikonfirmasi</small></div>
+                            <div class="user-progress"><h6 class="mb-0">{{ $stat['reservasi_aktif'] }}</h6></div>
                         </div>
                     </li>
                     <li class="d-flex align-items-center">
@@ -640,7 +662,7 @@
             <div class="card-header d-flex align-items-center justify-content-between sewa-expiring-header">
                 <div>
                     <h5 class="card-title m-0">Masa Sewa Akan Habis (7 Hari)</h5>
-                    <small class="text-body-secondary">Daftar penyewa aktif yang perlu di-follow up</small>
+                    <small class="text-body-secondary">Daftar penyewa aktif atau menunggak yang perlu di-follow up</small>
                 </div>
                 <a href="{{ route('sewas.index') }}" class="btn btn-sm btn-outline-warning sewa-expiring-btn">Lihat Data Sewa</a>
             </div>
@@ -665,6 +687,9 @@
                                     </small>
                                 </div>
                                 <div class="d-flex align-items-center gap-2">
+                                    @if($sewaHabis->status === 'menunggak')
+                                    <span class="badge rounded-pill bg-label-warning">Menunggak</span>
+                                    @endif
                                     <span class="badge rounded-pill {{ $sisaHari <= 3 ? 'bg-label-danger' : 'bg-label-warning' }}">
                                         {{ $sisaHari }} hari lagi
                                     </span>
@@ -709,6 +734,7 @@
                 <a href="{{ route('kamars.sewa') }}" class="btn btn-sm btn-outline-primary">Peta Kamar</a>
             </div>
             <div class="card-body pt-3">
+                <p class="small text-body-secondary">Kamar unik dengan sewa aktif atau selesai pada sebagian bulan; checkout eksklusif. Bukan rata-rata harian. Pembagi memakai jumlah kamar saat ini.</p>
                 <canvas id="chartHunian" height="220"></canvas>
             </div>
         </div>

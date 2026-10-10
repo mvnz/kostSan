@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Form Pembayaran Sewa</title>
+    <title>{{ !empty($billing['existing_payment']) ? 'Kirim Bukti Pembayaran' : 'Form Pembayaran Sewa' }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         :root {
@@ -138,8 +138,8 @@
 <body>
     <div class="container">
         <div class="head">
-            <h1>Form Pembayaran Sewa</h1>
-            <p>Silakan isi pembayaran untuk sewa aktif. Link ini hanya bisa dipakai satu kali.</p>
+            <h1>{{ !empty($billing['existing_payment']) ? 'Kirim Bukti Pembayaran' : 'Form Pembayaran Sewa' }}</h1>
+            <p>{{ !empty($billing['existing_payment']) ? 'Konfirmasi metode dan kirim bukti untuk tagihan yang sudah dibuat pengelola.' : 'Silakan isi pembayaran untuk sewa aktif.' }} Link ini hanya bisa dipakai satu kali.</p>
         </div>
 
         <form class="card" method="POST" action="{{ route('sewa-payment-registrations.store', $link->token) }}" enctype="multipart/form-data">
@@ -169,6 +169,12 @@
             @endif
 
             <div class="summary">
+                @if(!empty($billing['existing_payment']))
+                <div style="grid-column:span 3">
+                    <div class="label">Tagihan yang sudah dibuat</div>
+                    <div class="value">Periode {{ $billing['periode']?->format('m/Y') }} · nominal tidak dapat diubah dari formulir ini</div>
+                </div>
+                @endif
                 <div>
                     <div class="label">Nama Penghuni</div>
                     <div class="value">{{ $link->sewa->penghuni->nama ?? '-' }}</div>
@@ -177,7 +183,7 @@
                     <div class="label">Nomor Kamar</div>
                     <div class="value">{{ $link->sewa->kamar->nomor ?? '-' }}</div>
                 </div>
-                <div>
+                <div @if(!empty($billing['existing_payment'])) style="display:none" @endif>
                     <div class="label">Biaya/Bulan</div>
                     <div class="value">Rp {{ number_format($biayaBulanan, 0, ',', '.') }}</div>
                 </div>
@@ -191,7 +197,7 @@
                 </div>
                 <div>
                     <div class="label">Total Tagihan</div>
-                    <div class="value">Rp {{ number_format($totalTagihan, 0, ',', '.') }}</div>
+                    <div class="value">Rp {{ number_format($totalTagihan, !empty($billing['existing_payment']) ? 2 : 0, ',', '.') }}</div>
                 </div>
                 @if($hematTagihan > 0)
                     <div>
@@ -203,7 +209,7 @@
 
             <div class="grid">
                 <div class="col-12">
-                    <small style="display:block;color:#5b6b82;margin:-2px 0 6px;">Rumus: (Rp {{ number_format($hargaTierBulanan, 0, ',', '.') }} x {{ $durasiBulan }} bulan) = Rp {{ number_format($subtotalTagihan, 0, ',', '.') }}, lalu dibulatkan ke kelipatan Rp {{ number_format($kelipatanPembulatan, 0, ',', '.') }} menjadi Rp {{ number_format($totalTagihan, 0, ',', '.') }}. Harga dasar tanpa tier: Rp {{ number_format($subtotalHargaDasar, 0, ',', '.') }}.</small>
+                    @if(empty($billing['existing_payment']))<small style="display:block;color:#5b6b82;margin:-2px 0 6px;">Rumus: (Rp {{ number_format($hargaTierBulanan, 0, ',', '.') }} x {{ $durasiBulan }} bulan) = Rp {{ number_format($subtotalTagihan, 0, ',', '.') }}, lalu dibulatkan ke kelipatan Rp {{ number_format($kelipatanPembulatan, 0, ',', '.') }} menjadi Rp {{ number_format($totalTagihan, 0, ',', '.') }}. Harga dasar tanpa tier: Rp {{ number_format($subtotalHargaDasar, 0, ',', '.') }}.</small>@endif
                     <label>Metode <span class="required">*</span></label>
                     <select name="metode" required>
                         @foreach(['cash', 'transfer'] as $metode)
@@ -218,7 +224,7 @@
                 <input type="hidden" name="status" value="{{ old('status', 'lunas') }}">
 
                 <div class="col-12">
-                    <label>Bukti Pembayaran (jpg, png, pdf)</label>
+                    <label>Bukti Pembayaran (jpg, png, pdf) <span class="text-body-secondary">— wajib untuk transfer tagihan existing</span></label>
                     <input type="file" name="bukti_pembayaran" accept=".jpg,.jpeg,.png,.pdf,image/*,application/pdf">
                 </div>
 

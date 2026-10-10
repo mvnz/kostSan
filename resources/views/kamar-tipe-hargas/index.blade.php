@@ -61,7 +61,7 @@ $pageTitle = 'Tipe Kamar';
                             @endCanMenu
 
                             @canMenu('pengaturan.tipe_kamar', 'delete')
-                            <form method="POST" action="{{ route('kamar-tipe-hargas.destroy', $tipeHarga) }}" onsubmit="return confirm('Hapus tipe {{ addslashes($tipeHarga->tipe) }}?')" class="d-inline">
+                            <form method="POST" action="{{ route('kamar-tipe-hargas.destroy', $tipeHarga) }}" data-confirm-message="{{ 'Hapus tipe '.$tipeHarga->tipe.'?' }}" onsubmit="return confirm(this.dataset.confirmMessage)" class="d-inline">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="btn btn-sm btn-action-danger">
