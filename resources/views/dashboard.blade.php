@@ -662,7 +662,7 @@
             <div class="card-header d-flex align-items-center justify-content-between sewa-expiring-header">
                 <div>
                     <h5 class="card-title m-0">Masa Sewa Akan Habis (7 Hari)</h5>
-                    <small class="text-body-secondary">Daftar penyewa aktif yang perlu di-follow up</small>
+                    <small class="text-body-secondary">Daftar penyewa aktif atau menunggak yang perlu di-follow up</small>
                 </div>
                 <a href="{{ route('sewas.index') }}" class="btn btn-sm btn-outline-warning sewa-expiring-btn">Lihat Data Sewa</a>
             </div>
@@ -687,6 +687,9 @@
                                     </small>
                                 </div>
                                 <div class="d-flex align-items-center gap-2">
+                                    @if($sewaHabis->status === 'menunggak')
+                                    <span class="badge rounded-pill bg-label-warning">Menunggak</span>
+                                    @endif
                                     <span class="badge rounded-pill {{ $sisaHari <= 3 ? 'bg-label-danger' : 'bg-label-warning' }}">
                                         {{ $sisaHari }} hari lagi
                                     </span>

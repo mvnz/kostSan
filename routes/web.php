@@ -132,13 +132,13 @@ Route::get('/', function () {
 
     $sewaTerbaru = Sewa::with(['kamar', 'penghuni'])->latest()->take(5)->get();
 
-    $hariIni = Carbon::today();
-    $batasAkhir = Carbon::today()->addDays(7);
+    $hariIni = Carbon::today()->startOfDay();
+    $batasAkhir = $hariIni->copy()->addDays(7);
     $sewaAkanBerakhir = Sewa::with(['kamar', 'penghuni'])
-        ->where('status', 'aktif')
+        ->whereIn('status', ['aktif', 'menunggak'])
         ->whereNotNull('tanggal_keluar')
-        ->whereDate('tanggal_keluar', '>=', $hariIni)
-        ->whereDate('tanggal_keluar', '<=', $batasAkhir)
+        ->whereDate('tanggal_keluar', '>=', $hariIni->toDateString())
+        ->whereDate('tanggal_keluar', '<=', $batasAkhir->toDateString())
         ->orderBy('tanggal_keluar')
         ->get();
 

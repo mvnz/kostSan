@@ -143,9 +143,9 @@ class KamarController extends Controller
 
         DB::transaction(function () use ($request, $kamar): void {
             $kamar = Kamar::whereKey($kamar->id)->lockForUpdate()->firstOrFail();
-            $sewas = Sewa::where('kamar_id', $kamar->id)->where('status', 'aktif')->lockForUpdate()->get();
+            $sewas = Sewa::where('kamar_id', $kamar->id)->whereIn('status', ['aktif', 'menunggak'])->lockForUpdate()->get();
             if ($sewas->count() !== 1) {
-                throw ValidationException::withMessages(['tanggal_keluar' => 'Perpanjangan membutuhkan tepat satu sewa aktif. Periksa Data Sewa.']);
+                throw ValidationException::withMessages(['tanggal_keluar' => 'Perpanjangan membutuhkan tepat satu sewa aktif atau menunggak. Periksa Data Sewa.']);
             }
             $sewa = $sewas->first();
             $newEnd = Carbon::parse($request->tanggal_keluar);

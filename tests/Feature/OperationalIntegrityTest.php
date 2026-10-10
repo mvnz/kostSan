@@ -203,6 +203,23 @@ class OperationalIntegrityTest extends TestCase
         $this->assertSame('2026-11-01', $lease->fresh()->tanggal_keluar->toDateString());
     }
 
+    public function test_overdue_lease_can_be_extended_without_clearing_debt_status(): void
+    {
+        $lease = $this->lease(['status' => 'menunggak']);
+        $lease->kamar->update(['status' => 'terisi']);
+
+        $this->post('/kamars/'.$lease->kamar_id.'/perpanjang-sewa', [
+            'tanggal_keluar' => '2026-12-01',
+            'biaya_bulanan' => 1100000,
+        ])->assertRedirect('/kamars/sewa')->assertSessionHasNoErrors();
+
+        $lease->refresh();
+        $this->assertSame('menunggak', $lease->status);
+        $this->assertSame('2026-12-01', $lease->tanggal_keluar->toDateString());
+        $this->assertSame('1100000.00', $lease->biaya_bulanan);
+        $this->assertSame('terisi', $lease->kamar->fresh()->status);
+    }
+
     public function test_adjacent_reservation_is_allowed_and_can_be_updated(): void
     {
         $lease = $this->lease();

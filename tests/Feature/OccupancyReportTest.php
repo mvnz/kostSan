@@ -69,7 +69,7 @@ class OccupancyReportTest extends TestCase
         foreach ([['OVERDUE-NOW', '2026-10-01'], ['OVERDUE-FUTURE', '2026-11-01']] as [$number, $start]) {
             $resident = Penghuni::create(['nama' => 'Penghuni '.$number, 'telepon' => '']);
             $room = Kamar::create(['nomor' => $number, 'tipe' => 'A', 'harga_bulanan' => 550000, 'status' => 'terisi']);
-            Sewa::create(['kamar_id' => $room->id, 'penghuni_id' => $resident->id, 'tanggal_masuk' => $start, 'tanggal_keluar' => null, 'biaya_bulanan' => 550000, 'status' => 'menunggak']);
+            Sewa::create(['kamar_id' => $room->id, 'penghuni_id' => $resident->id, 'tanggal_masuk' => $start, 'tanggal_keluar' => $number === 'OVERDUE-NOW' ? '2026-10-15' : null, 'biaya_bulanan' => 550000, 'status' => 'menunggak']);
         }
 
         $this->get('/laporan-hunian?tahun=2026')
@@ -77,7 +77,18 @@ class OccupancyReportTest extends TestCase
             ->assertSee('Terisi · Menunggak')
             ->assertViewHas('kamars', fn ($rooms) => $rooms->firstWhere('nomor', 'OVERDUE-NOW')->sewas->count() === 1
                 && $rooms->firstWhere('nomor', 'OVERDUE-FUTURE')->sewas->isEmpty());
-        $this->get('/')->assertOk()->assertViewHas('stat', fn ($stat) => $stat['penghuni_aktif'] === 1);
+        $this->assertSame('2026-10-10', Carbon::today()->toDateString());
+        $this->assertSame(1, Sewa::whereIn('status', ['aktif', 'menunggak'])
+            ->whereDate('tanggal_keluar', '>=', Carbon::today())
+            ->whereDate('tanggal_keluar', '<=', Carbon::today()->addDays(7))
+            ->count());
+        $dashboard = $this->get('/');
+        $dashboard->assertOk()
+            ->assertViewHas('stat', fn ($stat) => $stat['penghuni_aktif'] === 1)
+            ->assertSee('Menunggak');
+        $expiring = $dashboard->viewData('sewaAkanBerakhir');
+        $this->assertCount(1, $expiring);
+        $this->assertSame('menunggak', $expiring->first()->status);
         $this->travelBack();
     }
 
