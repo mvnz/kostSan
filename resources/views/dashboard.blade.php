@@ -485,8 +485,8 @@
                             </span>
                         </div>
                         <div class="d-flex w-100 flex-wrap align-items-center justify-content-between gap-2">
-                            <div class="me-2"><h6 class="mb-0">Reservasi</h6><small>Calon penghuni</small></div>
-                            <div class="user-progress"><h6 class="mb-0">{{ $stat['total_reservasi'] }}</h6></div>
+                            <div class="me-2"><h6 class="mb-0">Reservasi Aktif</h6><small>Menunggu / dikonfirmasi</small></div>
+                            <div class="user-progress"><h6 class="mb-0">{{ $stat['reservasi_aktif'] }}</h6></div>
                         </div>
                     </li>
                     <li class="d-flex align-items-center">

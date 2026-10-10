@@ -51,6 +51,7 @@ Route::middleware(['auth', 'menu.permission'])->group(function () {
 Route::get('/', function () {
     $totalKamar = Kamar::count();
     $kamarTersedia = Kamar::where('status', 'tersedia')->count();
+    $kamarTerisi = Kamar::where('status', 'terisi')->count();
     $totalPemasukan = Keuangan::where('jenis', 'pemasukan')->sum('jumlah');
     $totalPengeluaran = Keuangan::where('jenis', 'pengeluaran')->sum('jumlah');
 
@@ -86,14 +87,20 @@ Route::get('/', function () {
 
     $stat = [
         'total_kamar' => $totalKamar,
-        'kamar_terisi' => max($totalKamar - $kamarTersedia, 0),
+        'kamar_terisi' => $kamarTerisi,
         'kamar_tersedia' => $kamarTersedia,
         'penghuni_aktif' => Sewa::whereIn('status', ['aktif', 'menunggak'])
             ->whereDate('tanggal_masuk', '<=', today())
             ->where(fn ($leases) => $leases->whereNull('tanggal_keluar')->orWhereDate('tanggal_keluar', '>', today()))
             ->distinct('penghuni_id')->count('penghuni_id'),
         'total_penghuni' => Penghuni::count(),
-        'total_reservasi' => Reservasi::count(),
+        'reservasi_aktif' => Reservasi::query()
+            ->whereIn('status', ['menunggu', 'dikonfirmasi'])
+            ->where(function ($query): void {
+                $query->whereNull('rencana_keluar')
+                    ->orWhereDate('rencana_keluar', '>', today());
+            })
+            ->count(),
         'tagihan_belum_lunas' => Pembayaran::where('status', 'belum_lunas')->sum('jumlah'),
         'total_pemasukan' => $totalPemasukan,
         'total_pengeluaran' => $totalPengeluaran,
