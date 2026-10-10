@@ -2,14 +2,15 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Reservasi extends Model
 {
     protected $fillable = [
         'kamar_id',
         'penghuni_id',
+        'sewa_id',
         'tanggal_reservasi',
         'rencana_masuk',
         'rencana_keluar',
@@ -33,5 +34,10 @@ class Reservasi extends Model
     public function penghuni(): BelongsTo
     {
         return $this->belongsTo(Penghuni::class);
+    }
+
+    public function sewa(): BelongsTo
+    {
+        return $this->belongsTo(Sewa::class);
     }
 }

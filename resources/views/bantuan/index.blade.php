@@ -135,7 +135,7 @@ $pageTitle = 'Bantuan';
                     <span class="help-step-number">4</span>
                     <div>
                         <strong class="d-block">Manajemen Sewa > Data Sewa</strong>
-                        <small class="text-body-secondary">Buat kontrak sewa berdasarkan penghuni dan kamar. Status kamar akan mengikuti status sewa.</small>
+                        <small class="text-body-secondary">Buat kontrak langsung, atau buka Reservasi terkonfirmasi lalu pilih <strong>Jadikan Sewa</strong>. Konversi menutup reservasi dan menautkannya ke sewa secara otomatis; status kamar mengikuti status sewa.</small>
                     </div>
                 </div>
             </div>

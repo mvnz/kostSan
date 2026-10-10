@@ -11,14 +11,23 @@
     <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
         <h5 class="mb-0">Reservasi #{{ $reservasi->id }}</h5>
         <div class="d-flex flex-wrap gap-2">
+            @canMenu('manajemen_sewa.data_sewa', 'create')
+            @if($reservasi->status === 'dikonfirmasi' && $reservasi->sewa_id === null)
+            <a href="{{ route('sewas.create', ['reservasi_id' => $reservasi->id]) }}" class="btn btn-sm btn-success"><i class="bx bx-transfer me-1"></i>Jadikan Sewa</a>
+            @endif
+            @endCanMenu
             @canMenu('manajemen_sewa.data_sewa', 'update')
+            @if($reservasi->sewa_id === null)
             <a href="{{ route('reservasis.edit', $reservasi) }}" class="btn btn-sm btn-primary"><i class="bx bx-edit me-1"></i>Edit</a>
+            @endif
             @endCanMenu
             @canMenu('manajemen_sewa.data_sewa', 'delete')
+            @if($reservasi->sewa_id === null)
             <form method="POST" action="{{ route('reservasis.destroy', $reservasi) }}" onsubmit="return confirm('Hapus reservasi ini?')" class="d-inline">
                 @csrf @method('DELETE')
                 <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bx bx-trash me-1"></i>Hapus</button>
             </form>
+            @endif
             @endCanMenu
         </div>
     </div>
@@ -30,6 +39,15 @@
             <dt class="col-sm-4 text-body-secondary">Rencana tinggal</dt><dd class="col-sm-8 mb-0">{{ $reservasi->rencana_masuk?->format('d/m/Y') ?? '-' }} – {{ $reservasi->rencana_keluar?->format('d/m/Y') ?? 'belum ditentukan' }}</dd>
             <dt class="col-sm-4 text-body-secondary">Uang muka</dt><dd class="col-sm-8 mb-0">Rp {{ number_format((float) $reservasi->uang_muka, 0, ',', '.') }}</dd>
             <dt class="col-sm-4 text-body-secondary">Status</dt><dd class="col-sm-8 mb-0"><span class="badge bg-label-{{ $reservasi->status === 'dikonfirmasi' ? 'success' : ($reservasi->status === 'menunggu' ? 'warning' : 'secondary') }}">{{ ucfirst($reservasi->status) }}</span></dd>
+            @if($reservasi->sewa_id)
+            <dt class="col-sm-4 text-body-secondary">Hasil konversi</dt><dd class="col-sm-8 mb-0">
+                @canMenu('manajemen_sewa.data_sewa', 'view')
+                <a href="{{ route('sewas.show', $reservasi->sewa_id) }}">Sewa #{{ $reservasi->sewa_id }}</a>
+                @else
+                Sewa #{{ $reservasi->sewa_id }}
+                @endCanMenu
+            </dd>
+            @endif
             <dt class="col-sm-4 text-body-secondary">Catatan</dt><dd class="col-sm-8 mb-0">{{ $reservasi->catatan ?: '-' }}</dd>
         </dl>
     </div>

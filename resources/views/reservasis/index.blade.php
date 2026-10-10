@@ -78,16 +78,27 @@ $pageTitle = 'Reservasi';
                             <a href="{{ route('reservasis.show', $reservasi) }}" class="btn btn-sm btn-action-detail">
                                 <i class="icon-base bx bx-detail me-1"></i>Detail
                             </a>
+                            @canMenu('manajemen_sewa.data_sewa', 'create')
+                            @if($reservasi->status === 'dikonfirmasi' && $reservasi->sewa_id === null)
+                            <a href="{{ route('sewas.create', ['reservasi_id' => $reservasi->id]) }}" class="btn btn-sm btn-success">
+                                <i class="icon-base bx bx-transfer me-1"></i>Jadikan Sewa
+                            </a>
+                            @endif
+                            @endCanMenu
                             @canMenu('manajemen_sewa.data_sewa', 'update')
+                            @if($reservasi->sewa_id === null)
                             <a href="{{ route('reservasis.edit', $reservasi) }}" class="btn btn-sm btn-edit-fancy">
                                 <i class="icon-base bx bx-edit-alt me-1"></i>Edit
                             </a>
+                            @endif
                             @endCanMenu
                             @canMenu('manajemen_sewa.data_sewa', 'delete')
+                            @if($reservasi->sewa_id === null)
                             <form method="POST" action="{{ route('reservasis.destroy', $reservasi) }}" onsubmit="return confirm('Hapus reservasi ini?')" class="d-inline">
                                 @csrf @method('DELETE')
                                 <button type="submit" class="btn btn-sm btn-action-danger"><i class="icon-base bx bx-trash me-1"></i>Delete</button>
                             </form>
+                            @endif
                             @endCanMenu
                         </div>
                     </td>

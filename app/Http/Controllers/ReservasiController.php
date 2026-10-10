@@ -8,12 +8,13 @@ use App\Models\Reservasi;
 use App\Services\RoomAvailability;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class ReservasiController extends Controller
 {
     public function index()
     {
-        $reservasis = Reservasi::with('kamar', 'penghuni')->latest('tanggal_reservasi')->get();
+        $reservasis = Reservasi::with('kamar', 'penghuni', 'sewa')->latest('tanggal_reservasi')->get();
 
         return view('reservasis.index', compact('reservasis'));
     }
@@ -53,7 +54,7 @@ class ReservasiController extends Controller
 
     public function show(Reservasi $reservasi)
     {
-        $reservasi->load(['kamar', 'penghuni']);
+        $reservasi->load(['kamar', 'penghuni', 'sewa']);
 
         return response()
             ->view('reservasis.show', compact('reservasi'))
@@ -62,6 +63,12 @@ class ReservasiController extends Controller
 
     public function edit(Reservasi $reservasi)
     {
+        if ($reservasi->sewa_id !== null) {
+            return redirect()->route('reservasis.show', $reservasi)->withErrors([
+                'reservasi' => 'Reservasi yang sudah dikonversi dipertahankan sebagai riwayat dan tidak dapat diubah.',
+            ]);
+        }
+
         return view('reservasis.form', [
             'reservasi' => $reservasi,
             'kamars' => Kamar::orderBy('nomor')->get(),
@@ -71,6 +78,10 @@ class ReservasiController extends Controller
 
     public function update(Request $request, Reservasi $reservasi)
     {
+        if ($reservasi->sewa_id !== null) {
+            throw ValidationException::withMessages(['reservasi' => 'Reservasi yang sudah dikonversi tidak dapat diubah.']);
+        }
+
         $validated = $request->validate([
             'kamar_id' => ['required', 'exists:kamars,id'],
             'penghuni_id' => ['required', 'exists:penghunis,id'],
@@ -85,6 +96,9 @@ class ReservasiController extends Controller
         DB::transaction(function () use ($validated, $reservasi): void {
             $rooms = Kamar::whereIn('id', [$reservasi->kamar_id, $validated['kamar_id']])->orderBy('id')->lockForUpdate()->get();
             $reservasi = Reservasi::whereKey($reservasi->id)->lockForUpdate()->firstOrFail();
+            if ($reservasi->sewa_id !== null) {
+                throw ValidationException::withMessages(['reservasi' => 'Reservasi yang sudah dikonversi tidak dapat diubah.']);
+            }
             $kamar = $rooms->firstWhere('id', $validated['kamar_id']);
             abort_unless($kamar, 404);
             if ($validated['status'] === 'dikonfirmasi') {
@@ -98,7 +112,13 @@ class ReservasiController extends Controller
 
     public function destroy(Reservasi $reservasi)
     {
-        $reservasi->delete();
+        DB::transaction(function () use ($reservasi): void {
+            $reservasi = Reservasi::whereKey($reservasi->id)->lockForUpdate()->firstOrFail();
+            if ($reservasi->sewa_id !== null) {
+                throw ValidationException::withMessages(['reservasi' => 'Reservasi yang sudah dikonversi tidak dapat dihapus agar jejak operasional tetap utuh.']);
+            }
+            $reservasi->delete();
+        });
 
         return redirect()->route('reservasis.index')->with('success', 'Data reservasi berhasil dihapus.');
     }

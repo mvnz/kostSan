@@ -122,13 +122,13 @@ $pageTitle = 'Sewa & Pembayaran';
                                     </a>
                                     @endCanMenu
                                     @canMenu('manajemen_sewa.data_sewa', 'delete')
-                                    @if($sewa->pembayarans->isEmpty())
+                                    @if($sewa->pembayarans->isEmpty() && !$sewa->convertedReservation)
                                     <form method="POST" action="{{ route('sewas.destroy', $sewa) }}" onsubmit="return confirm('Hapus sewa ini?')" class="d-inline">
                                         @csrf @method('DELETE')
                                         <button type="submit" class="btn btn-sm btn-action-danger"><i class="icon-base bx bx-trash me-1"></i>Delete</button>
                                     </form>
                                     @else
-                                    <span class="badge bg-label-secondary" title="Sewa dengan riwayat pembayaran dipertahankan untuk audit">Riwayat tersimpan</span>
+                                    <span class="badge bg-label-secondary" title="Sewa dengan riwayat pembayaran atau reservasi asal dipertahankan untuk audit">Riwayat tersimpan</span>
                                     @endif
                                     @endCanMenu
                                 </div>

@@ -22,7 +22,7 @@
                         <i class="bx bx-edit me-1"></i>Edit
                     </a>
                     @endCanMenu
-                    @if($sewa->pembayarans->isEmpty())
+                    @if($sewa->pembayarans->isEmpty() && !$sewa->convertedReservation)
                     @canMenu('manajemen_sewa.data_sewa', 'delete')
                     <form method="POST" action="{{ route('sewas.destroy', $sewa) }}" onsubmit="return confirm('Hapus sewa ini?')" class="d-inline">
                         @csrf @method('DELETE')
@@ -32,7 +32,11 @@
                     </form>
                     @endCanMenu
                     @else
+                    @if($sewa->pembayarans->isNotEmpty())
                     <span class="badge bg-label-secondary" title="Sewa dengan riwayat pembayaran tidak dapat dihapus">Riwayat pembayaran tersimpan</span>
+                    @else
+                    <span class="badge bg-label-secondary" title="Sewa yang berasal dari reservasi tidak dapat dihapus">Reservasi asal tersimpan</span>
+                    @endif
                     @endif
                 </div>
             </div>
@@ -102,6 +106,12 @@
                             <span>Belum ada bukti</span>
                         @endif
                     </div>
+                    @if($sewa->convertedReservation)
+                    <div class="col-12">
+                        <small class="text-body-secondary d-block" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;font-weight:600">Reservasi Asal</small>
+                        <a href="{{ route('reservasis.show', $sewa->convertedReservation) }}">Reservasi #{{ $sewa->convertedReservation->id }}</a>
+                    </div>
+                    @endif
                     @if($sewa->catatan)
                     <div class="col-12">
                         <small class="text-body-secondary d-block" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;font-weight:600">Catatan</small>

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Sewa extends Model
 {
@@ -41,6 +42,11 @@ class Sewa extends Model
     public function pembayarans(): HasMany
     {
         return $this->hasMany(Pembayaran::class);
+    }
+
+    public function convertedReservation(): HasOne
+    {
+        return $this->hasOne(Reservasi::class);
     }
 
     public function billingMonths(): int

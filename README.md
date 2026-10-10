@@ -27,7 +27,7 @@ Sesuaikan `.env` dengan database masing-masing. Jangan menjalankan migrasi atau 
 
 - Tanggal keluar adalah tanggal checkout: rentang berlaku dari tanggal masuk sampai sebelum tanggal keluar. Checkout dan check-in berikutnya boleh pada tanggal yang sama.
 - Sewa aktif atau menunggak dan reservasi dikonfirmasi memblokir periode yang bertumpang tindih. Tanggal akhir kosong memblokir seluruh periode setelah tanggal mulai. Reservasi menunggu/dibatalkan dan sewa selesai tidak memblokir kamar.
-- Reservasi yang dikonfirmasi untuk penghuni yang sama boleh dikonversi melalui Data Sewa. Link publik menciptakan penghuni baru sehingga tetap ditolak bila kamar telah dialokasikan.
+- Reservasi terkonfirmasi dikonversi lewat tombol **Jadikan Sewa** pada daftar/detail Reservasi. Form memuat kamar, penghuni, dan periode dari reservasi; penyimpanan sewa sekaligus menandai reservasi `dikonversi` dan menautkan kedua riwayat dalam satu transaksi. Membuat sewa biasa tidak boleh melewati reservasi meski penghuni sama. Link publik menciptakan penghuni baru sehingga tetap ditolak bila kamar telah dialokasikan.
 - Membuat/mengedit sewa, pendaftaran publik, approval, dan perpanjangan tidak boleh menutup sewa penghuni lain. Kamar perbaikan tidak menerima sewa baru. Master Kamar tidak boleh mengosongkan kamar yang masih memiliki sewa; gunakan tindakan Selesai Sewa.
 - Perpanjangan memerlukan tepat satu sewa aktif dan tanggal akhir yang lebih maju, dengan pengecekan reservasi lain.
 - Approval pembayaran dapat diulang tanpa mengirim notifikasi kedua atau membuka kembali sewa yang selesai. Notifikasi dijalankan setelah transaksi database selesai.
@@ -112,7 +112,7 @@ Detail Sewa dapat dibuka oleh operator dengan hak **Lihat Data Sewa** untuk mene
 
 Menu Penghuni juga memiliki halaman detail read-only terpisah dari form edit. Operator dengan hak **Lihat Data Penghuni** dapat memeriksa identitas, kontak darurat, kendaraan, ringkasan relasi, foto KTP, dan selfie privat tanpa memperoleh aksi mutasi. Halaman sensitif memakai `no-store`; output teks di-escape dan file tetap dilayani lewat pemeriksaan izin.
 
-Detail Reservasi tidak lagi mengalihkan viewer ke form edit. Role **Lihat Data Sewa** dapat memeriksa penghuni, kamar, rencana tinggal, uang muka, status, dan catatan dalam halaman `no-store`; tombol mutasi serta endpoint tetap mengikuti hak update/delete.
+Detail Reservasi tidak lagi mengalihkan viewer ke form edit. Role **Lihat Data Sewa** dapat memeriksa penghuni, kamar, rencana tinggal, uang muka, status, dan catatan dalam halaman `no-store`; tombol mutasi serta endpoint tetap mengikuti hak update/delete. Reservasi yang sudah dikonversi bersifat immutable dan menaut ke Detail Sewa; sewa hasil konversi juga mempertahankan tautan balik dan tidak dapat dihapus agar jejak operasional tetap utuh.
 
 Detail Kamar juga terpisah dari Edit dan mengikuti hak baca/update/delete. Kamar yang memiliki histori sewa atau reservasi tidak menawarkan tombol hapus dan endpoint memeriksa ulang di dalam transaksi; ini mencegah hilangnya histori operasional karena cascade atau request langsung. Kamar tanpa histori tetap dapat dihapus.
 
@@ -120,7 +120,7 @@ Saat data penghuni yang sudah tidak memiliki relasi sewa/reservasi/invoice dihap
 
 Detail Invoice dan Pembayaran sekarang dapat dibaca dengan hak Lihat masing-masing modul tanpa diarahkan ke halaman Edit. Tautan sumber lintas modul mengikuti izin; transaksi lunas/invoice otomatis tidak menawarkan edit terpisah. Laporan Keuangan HTML/PDF memvalidasi bulan dan tetap tepat saat tanggal sistem 31. Laporan Hunian menghitung kamar unik pada sebagian bulan, mengecualikan tanggal checkout, dan memvalidasi tahun/cakupan; rata-rata harian belum dicakup.
 
-Checkpoint kelanjutan terbaru: [Detail dan histori kamar](docs/reviews/2026-10-10-room-detail-history.md). Baca juga [detail reservasi read-only](docs/reviews/2026-10-10-reservation-detail-access.md), [detail penghuni read-only](docs/reviews/2026-10-10-resident-detail-access.md), [detail sewa read-only](docs/reviews/2026-10-10-lease-detail-access.md), dan [perlindungan histori sewa](docs/reviews/2026-10-10-lease-history-preservation.md) sebelum mengulang backlog.
+Checkpoint kelanjutan terbaru: [Konversi reservasi menjadi sewa](docs/reviews/2026-10-10-reservation-conversion.md). Baca juga [detail dan histori kamar](docs/reviews/2026-10-10-room-detail-history.md), [detail reservasi read-only](docs/reviews/2026-10-10-reservation-detail-access.md), [detail penghuni read-only](docs/reviews/2026-10-10-resident-detail-access.md), [detail sewa read-only](docs/reviews/2026-10-10-lease-detail-access.md), dan [perlindungan histori sewa](docs/reviews/2026-10-10-lease-history-preservation.md) sebelum mengulang backlog.
 
 ## Cakupan pembayaran lewat link
 
