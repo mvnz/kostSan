@@ -41,7 +41,7 @@ class Kamar extends Model
             ->where('status', 'dikonfirmasi')
             ->where(function ($query): void {
                 $query->whereNull('rencana_keluar')
-                    ->orWhereDate('rencana_keluar', '>=', today());
+                    ->orWhereDate('rencana_keluar', '>', today());
             });
     }
 }
