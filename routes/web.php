@@ -88,7 +88,10 @@ Route::get('/', function () {
         'total_kamar' => $totalKamar,
         'kamar_terisi' => max($totalKamar - $kamarTersedia, 0),
         'kamar_tersedia' => $kamarTersedia,
-        'penghuni_aktif' => Sewa::where('status', 'aktif')->distinct('penghuni_id')->count('penghuni_id'),
+        'penghuni_aktif' => Sewa::whereIn('status', ['aktif', 'menunggak'])
+            ->whereDate('tanggal_masuk', '<=', today())
+            ->where(fn ($leases) => $leases->whereNull('tanggal_keluar')->orWhereDate('tanggal_keluar', '>', today()))
+            ->distinct('penghuni_id')->count('penghuni_id'),
         'total_penghuni' => Penghuni::count(),
         'total_reservasi' => Reservasi::count(),
         'tagihan_belum_lunas' => Pembayaran::where('status', 'belum_lunas')->sum('jumlah'),

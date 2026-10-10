@@ -37,7 +37,10 @@ class LaporanHunianController extends Controller
 
         // Per-kamar status saat ini
         $kamars = Kamar::with(['sewas' => function ($q) {
-            $q->with('penghuni')->where('status', 'aktif');
+            $q->with('penghuni')
+                ->whereIn('status', ['aktif', 'menunggak'])
+                ->whereDate('tanggal_masuk', '<=', today())
+                ->where(fn ($leases) => $leases->whereNull('tanggal_keluar')->orWhereDate('tanggal_keluar', '>', today()));
         }, 'confirmedReservations' => function ($q) {
             $q->with('penghuni')->orderBy('rencana_masuk');
         }])->orderBy('nomor')->get();

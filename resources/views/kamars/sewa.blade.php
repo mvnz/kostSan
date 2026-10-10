@@ -159,7 +159,7 @@ $pageTitle = 'Sewa Kamar';
                     <div class="floor-map {{ $floorData['kamars']->isEmpty() ? 'floor-map-empty' : '' }}" style="--cols:{{ $floorData['max_col'] }}; --rows:{{ $floorData['max_row'] }};">
                         @forelse($floorData['kamars'] as $kamar)
                             @php
-                                $aktifSewa = $kamar->sewas->firstWhere('status', 'aktif');
+                                $aktifSewa = $kamar->sewas->firstWhere('status', 'aktif') ?? $kamar->sewas->firstWhere('status', 'menunggak');
                                 $sewaHistory = $kamar->sewas->map(fn($s) => [
                                     'id'          => $s->id,
                                     'penghuni'    => $s->penghuni?->nama ?? 'Unknown',
@@ -215,7 +215,7 @@ $pageTitle = 'Sewa Kamar';
                 <div class="extra-room-list">
                     @foreach($kamarTanpaPosisi as $kamar)
                         @php
-                            $aktifSewa = $kamar->sewas->firstWhere('status', 'aktif');
+                            $aktifSewa = $kamar->sewas->firstWhere('status', 'aktif') ?? $kamar->sewas->firstWhere('status', 'menunggak');
                             $sewaHistory = $kamar->sewas->map(fn($s) => [
                                 'id'          => $s->id,
                                 'penghuni'    => $s->penghuni?->nama ?? 'Unknown',

@@ -8,8 +8,8 @@ use App\Models\PaymentReversal;
 use App\Models\Pembayaran;
 use App\Models\Sewa;
 use App\Services\BillingCoverage;
-use App\Services\PrivateUpload;
 use App\Services\PrivateFileCleanup;
+use App\Services\PrivateUpload;
 use App\Services\RoomAvailability;
 use App\Services\WhatsAppService;
 use Carbon\Carbon;
@@ -397,7 +397,7 @@ class PembayaranController extends Controller
 
     private function billableLeases(Carbon $periode): Builder
     {
-        return Sewa::query()->where('status', 'aktif')
+        return Sewa::query()->whereIn('status', ['aktif', 'menunggak'])
             ->whereDate('tanggal_masuk', '<', $periode->copy()->addMonth()->toDateString())
             ->where(fn (Builder $query) => $query->whereNull('tanggal_keluar')
                 ->orWhereDate('tanggal_keluar', '>', $periode->toDateString()));

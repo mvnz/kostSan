@@ -12,7 +12,7 @@ $pageTitle = 'Laporan Hunian';
     </div>
 </div>
 
-<div class="alert alert-info">Setiap kamar dihitung sekali bila memiliki sewa {{ $cakupan === 'riwayat' ? 'aktif atau selesai' : 'aktif' }} pada sebagian bulan. Tanggal checkout tidak dihitung. Sewa menunggak tidak dimasukkan. Histori membutuhkan tanggal checkout yang valid. Angka ini bukan rata-rata hunian harian; pembagi memakai jumlah kamar yang ada saat ini.</div>
+<div class="alert alert-info">Setiap kamar dihitung sekali bila memiliki sewa {{ $cakupan === 'riwayat' ? 'berjalan atau selesai' : 'aktif atau menunggak' }} pada sebagian bulan. Tanggal checkout tidak dihitung. Histori selesai membutuhkan tanggal checkout yang valid. Angka ini bukan rata-rata hunian harian; pembagi memakai jumlah kamar yang ada saat ini.</div>
 <div class="card mb-3">
     <div class="card-body p-3">
         <form method="GET" class="row g-2 align-items-end">
@@ -140,7 +140,7 @@ $pageTitle = 'Laporan Hunian';
                         <td>{{ $k->tipe }}</td>
                         <td>
                             @if($sewaAktif)
-                                <span class="badge bg-label-success">Terisi</span>
+                                <span class="badge {{ $sewaAktif->status === 'menunggak' ? 'bg-label-warning' : 'bg-label-success' }}">{{ $sewaAktif->status === 'menunggak' ? 'Terisi · Menunggak' : 'Terisi' }}</span>
                             @elseif($k->status === 'perbaikan')
                                 <span class="badge bg-label-warning">Perbaikan</span>
                             @else

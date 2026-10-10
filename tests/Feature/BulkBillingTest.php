@@ -69,6 +69,26 @@ class BulkBillingTest extends TestCase
         $this->assertDatabaseHas('pembayarans', ['sewa_id' => $eligible->id, 'jumlah' => 1000000]);
     }
 
+    public function test_overdue_occupant_remains_billable_for_overlapping_month(): void
+    {
+        $overdue = $this->lease([
+            'status' => 'menunggak',
+            'tanggal_masuk' => '2026-09-01',
+            'tanggal_keluar' => null,
+        ]);
+
+        $this->get('/pembayarans-bulk?bulan=2026-10')->assertOk()
+            ->assertViewHas('sewas', fn ($rows) => $rows->pluck('sewa.id')->all() === [$overdue->id])
+            ->assertSee('Menunggak');
+        $this->post('/pembayarans-bulk', ['bulan' => '2026-10'])->assertRedirect('/pembayarans');
+        $this->assertDatabaseHas('pembayarans', [
+            'sewa_id' => $overdue->id,
+            'periode' => '2026-10-01 00:00:00',
+            'jumlah' => 1000000,
+            'status' => 'belum_lunas',
+        ]);
+    }
+
     public function test_selected_billing_only_creates_selected_leases_and_retry_skips_existing(): void
     {
         $chosen = $this->lease();

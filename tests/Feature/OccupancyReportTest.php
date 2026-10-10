@@ -49,7 +49,7 @@ class OccupancyReportTest extends TestCase
         $this->travelTo(Carbon::parse('2026-11-30 12:00:00'));
         $this->actingAs(User::factory()->create());
         $this->historicalRooms();
-        $this->get('/')->assertOk()->assertViewHas('hunianChart', fn ($chart) => end($chart['data']) === 1 && end($chart['pct']) == 33);
+        $this->get('/')->assertOk()->assertViewHas('hunianChart', fn ($chart) => end($chart['data']) === 2 && end($chart['pct']) == 67);
         $this->travelBack();
     }
 
@@ -57,9 +57,28 @@ class OccupancyReportTest extends TestCase
     {
         $this->actingAs(User::factory()->create());
         $this->historicalRooms();
-        $this->get('/laporan-hunian?tahun=2026')->assertOk()->assertViewHas('bulanData', fn ($months) => $months[9]['terisi'] === 0 && $months[10]['terisi'] === 1);
-        $this->get('/laporan-hunian?tahun=2026&cakupan=riwayat')->assertOk()->assertViewHas('cakupan', 'riwayat')->assertViewHas('bulanData', fn ($months) => $months[9]['terisi'] === 2 && $months[10]['terisi'] === 1 && $months[11]['terisi'] === 0);
+        $this->get('/laporan-hunian?tahun=2026')->assertOk()->assertViewHas('bulanData', fn ($months) => $months[9]['terisi'] === 0 && $months[10]['terisi'] === 2);
+        $this->get('/laporan-hunian?tahun=2026&cakupan=riwayat')->assertOk()->assertViewHas('cakupan', 'riwayat')->assertViewHas('bulanData', fn ($months) => $months[9]['terisi'] === 2 && $months[10]['terisi'] === 2 && $months[11]['terisi'] === 0);
         $this->getJson('/laporan-hunian?cakupan=invalid')->assertUnprocessable()->assertJsonValidationErrors('cakupan');
+    }
+
+    public function test_current_report_and_dashboard_include_overdue_current_occupant_but_not_future_one(): void
+    {
+        $this->travelTo(Carbon::parse('2026-10-10 12:00:00'));
+        $this->actingAs(User::factory()->create());
+        foreach ([['OVERDUE-NOW', '2026-10-01'], ['OVERDUE-FUTURE', '2026-11-01']] as [$number, $start]) {
+            $resident = Penghuni::create(['nama' => 'Penghuni '.$number, 'telepon' => '']);
+            $room = Kamar::create(['nomor' => $number, 'tipe' => 'A', 'harga_bulanan' => 550000, 'status' => 'terisi']);
+            Sewa::create(['kamar_id' => $room->id, 'penghuni_id' => $resident->id, 'tanggal_masuk' => $start, 'tanggal_keluar' => null, 'biaya_bulanan' => 550000, 'status' => 'menunggak']);
+        }
+
+        $this->get('/laporan-hunian?tahun=2026')
+            ->assertOk()
+            ->assertSee('Terisi · Menunggak')
+            ->assertViewHas('kamars', fn ($rooms) => $rooms->firstWhere('nomor', 'OVERDUE-NOW')->sewas->count() === 1
+                && $rooms->firstWhere('nomor', 'OVERDUE-FUTURE')->sewas->isEmpty());
+        $this->get('/')->assertOk()->assertViewHas('stat', fn ($stat) => $stat['penghuni_aktif'] === 1);
+        $this->travelBack();
     }
 
     public function test_history_excludes_missing_checkout_and_invalid_intervals_but_keeps_open_active_lease(): void
