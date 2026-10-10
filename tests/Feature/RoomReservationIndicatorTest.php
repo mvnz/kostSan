@@ -6,6 +6,7 @@ use App\Models\Kamar;
 use App\Models\Penghuni;
 use App\Models\Reservasi;
 use App\Models\Role;
+use App\Models\Sewa;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -86,6 +87,71 @@ class RoomReservationIndicatorTest extends TestCase
             ->assertSee($reservation->penghuni->nama)
             ->assertSee('01/11/2026')
             ->assertSee('01/12/2026');
+    }
+
+    public function test_room_map_uses_data_and_text_nodes_for_untrusted_room_and_resident_values(): void
+    {
+        $room = $this->room("X');alert(1);//");
+        $room->update(['tipe' => "A');alert(2);//", 'status' => 'terisi']);
+        $resident = Penghuni::create([
+            'nama' => '</td><script>window.__roomXss=1</script>',
+            'telepon' => '080000000001',
+        ]);
+        Sewa::create([
+            'kamar_id' => $room->id,
+            'penghuni_id' => $resident->id,
+            'tanggal_masuk' => '2026-10-01',
+            'tanggal_keluar' => '2026-11-01',
+            'biaya_bulanan' => 550000,
+            'status' => 'aktif',
+        ]);
+
+        $this->get('/kamars/sewa')
+            ->assertOk()
+            ->assertSee('onclick="openKamar(this)"', false)
+            ->assertDontSee('openKamar('.$room->id, false)
+            ->assertDontSee('<script>window.__roomXss', false)
+            ->assertSee('data-nomor="X&#039;);alert(1);//"', false)
+            ->assertSee('tbody.replaceChildren()', false)
+            ->assertSee("cell.textContent = String(value ?? '-')", false);
+    }
+
+    public function test_view_only_room_operator_does_not_receive_mutation_controls(): void
+    {
+        $this->room('VIEW-ONLY-CONTROLS');
+
+        $this->get('/kamars/sewa')
+            ->assertOk()
+            ->assertDontSee('id="btn-layout"', false)
+            ->assertDontSee('id="btn-sewa-kamar"', false)
+            ->assertDontSee('id="form-generate-link"', false)
+            ->assertDontSee('id="form-selesai"', false)
+            ->assertDontSee('id="btn-perpanjang"', false)
+            ->assertSee('const canEditLease = false;', false);
+    }
+
+    public function test_room_operations_update_permission_authorizes_finish_endpoint(): void
+    {
+        $room = $this->room('UPDATE-PERMISSION');
+        $room->update(['status' => 'terisi']);
+        $resident = Penghuni::create(['nama' => 'Operator Permission Synthetic', 'telepon' => '080000000002']);
+        $lease = Sewa::create([
+            'kamar_id' => $room->id,
+            'penghuni_id' => $resident->id,
+            'tanggal_masuk' => '2026-10-01',
+            'tanggal_keluar' => '2026-11-01',
+            'biaya_bulanan' => 550000,
+            'status' => 'aktif',
+        ]);
+        $role = Role::create([
+            'name' => 'Room operations updater',
+            'menu_permissions' => ['manajemen_sewa.sewa_kamar' => ['view', 'update']],
+        ]);
+        $this->actingAs(User::factory()->create(['role_id' => $role->id]));
+
+        $this->post('/kamars/'.$room->id.'/selesai-sewa')->assertRedirect('/kamars/sewa');
+        $this->assertSame('selesai', $lease->fresh()->status);
+        $this->assertSame('tersedia', $room->fresh()->status);
     }
 
     private function room(string $number): Kamar

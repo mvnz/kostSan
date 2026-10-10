@@ -172,6 +172,9 @@ $pageTitle = 'Sewa Kamar';
                             <div class="seat seat-{{ $kamar->status }}"
                                     style="grid-column: {{ $kamar->resolved_col }}; grid-row: {{ $kamar->resolved_row }};"
                                  data-id="{{ $kamar->id }}"
+                                 data-nomor="{{ $kamar->nomor }}"
+                                 data-tipe="{{ $kamar->tipe }}"
+                                 data-status="{{ $kamar->status }}"
                                  data-layout-floor="{{ $kamar->resolved_floor }}"
                                  data-layout-col="{{ $kamar->resolved_col }}"
                                  data-layout-row="{{ $kamar->resolved_row }}"
@@ -179,8 +182,8 @@ $pageTitle = 'Sewa Kamar';
                                  data-sewa-keluar="{{ optional($aktifSewa?->tanggal_keluar)->format('Y-m-d') }}"
                                  data-sewa-biaya="{{ (int) ($aktifSewa?->biaya_bulanan ?? $kamar->harga_bulanan) }}"
                                  data-harga-kamar="{{ (int) $kamar->harga_bulanan }}"
-                                 data-sewas='{{ json_encode($sewaHistory) }}'
-                                 onclick="openKamar({{ $kamar->id }}, '{{ addslashes($kamar->nomor) }}', '{{ addslashes($kamar->tipe) }}', {{ (int) $kamar->harga_bulanan }}, '{{ $kamar->status }}')"
+                                 data-sewas="{{ json_encode($sewaHistory, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) }}"
+                                 onclick="openKamar(this)"
                                  role="button"
                                  title="{{ $kamar->nomor }} — {{ $kamar->tipe }} — Rp {{ number_format((float)$kamar->harga_bulanan,0,',','.') }}/bln — {{ ucfirst($kamar->status) }}{{ $kamar->confirmed_reservations_count ? ' — Ada reservasi terkonfirmasi' : '' }}">
                                 @if($kamar->confirmed_reservations_count)
@@ -227,6 +230,9 @@ $pageTitle = 'Sewa Kamar';
                         @endphp
                         <div class="seat seat-{{ $kamar->status }}"
                              data-id="{{ $kamar->id }}"
+                             data-nomor="{{ $kamar->nomor }}"
+                             data-tipe="{{ $kamar->tipe }}"
+                             data-status="{{ $kamar->status }}"
                              data-layout-floor="{{ $kamar->resolved_floor }}"
                              data-layout-col="{{ $kamar->resolved_col }}"
                              data-layout-row="{{ $kamar->resolved_row }}"
@@ -234,8 +240,8 @@ $pageTitle = 'Sewa Kamar';
                              data-sewa-keluar="{{ optional($aktifSewa?->tanggal_keluar)->format('Y-m-d') }}"
                              data-sewa-biaya="{{ (int) ($aktifSewa?->biaya_bulanan ?? $kamar->harga_bulanan) }}"
                              data-harga-kamar="{{ (int) $kamar->harga_bulanan }}"
-                             data-sewas='{{ json_encode($sewaHistory) }}'
-                             onclick="openKamar({{ $kamar->id }}, '{{ addslashes($kamar->nomor) }}', '{{ addslashes($kamar->tipe) }}', {{ (int)$kamar->harga_bulanan }}, '{{ $kamar->status }}')"
+                             data-sewas="{{ json_encode($sewaHistory, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) }}"
+                             onclick="openKamar(this)"
                              role="button"
                              title="{{ $kamar->nomor }} — {{ $kamar->tipe }} — Rp {{ number_format((float)$kamar->harga_bulanan,0,',','.') }}/bln — {{ ucfirst($kamar->status) }}{{ $kamar->confirmed_reservations_count ? ' — Ada reservasi terkonfirmasi' : '' }}">
                             @if($kamar->confirmed_reservations_count)
@@ -279,13 +285,17 @@ $pageTitle = 'Sewa Kamar';
                     <button type="button" class="btn btn-outline-secondary" onclick="closePanel()">
                         <i class="bx bx-x me-1"></i>Tutup
                     </button>
+                    @canMenu('master_data.data_kamar', 'update')
                     <button type="button" class="btn btn-outline-info" id="btn-layout" onclick="openLayoutModal()">
                         <i class="bx bx-move me-1"></i>Atur Posisi
                     </button>
-                    @canMenu('manajemen_sewa.sewa_kamar', 'create')
+                    @endCanMenu
+                    @canMenu('manajemen_sewa.data_sewa', 'create')
                     <a href="#" id="btn-sewa-kamar" class="btn btn-primary d-none">
                         <i class="bx bx-home-circle me-1"></i>Sewa Kamar
                     </a>
+                    @endCanMenu
+                    @canMenu('master_data.data_penghuni', 'create')
                     <form id="form-generate-link" method="POST" action="{{ route('penghuni-registrations.generate') }}" class="d-inline d-none">
                         @csrf
                         <input type="hidden" name="kamar_id" id="input-generate-kamar-id">
@@ -293,6 +303,8 @@ $pageTitle = 'Sewa Kamar';
                             <i class="bx bx-link-alt me-1"></i>Link Pendaftaran
                         </button>
                     </form>
+                    @endCanMenu
+                    @canMenu('manajemen_sewa.sewa_kamar', 'update')
                     <form id="form-selesai" method="POST" action="#" onsubmit="return confirm('Selesaikan sewa aktif kamar ini?')" class="d-inline d-none">
                         @csrf
                         <button type="submit" class="btn btn-success">
@@ -631,20 +643,25 @@ $pageTitle = 'Sewa Kamar';
 <script>
     let activeSeat = null;
     let activeKamarId = null;
+    const canEditLease = @json(auth()->user()?->hasMenuPermission('manajemen_sewa.data_sewa', 'update') ?? false);
     const layoutRouteTemplate = '{{ route("kamars.update-layout", ["kamar" => "__KAMAR_ID__"]) }}';
     const defaultLayoutFloor = '{{ (string) ($floors->first()->number ?? 1) }}';
 
     const statusConfig = {
         tersedia:  { label: 'Tersedia',  cls: 'bg-label-success' },
         terisi:    { label: 'Terisi',    cls: 'bg-label-danger'  },
-        reservasi: { label: 'Reservasi', cls: 'bg-label-warning' },
         perbaikan: { label: 'Perbaikan', cls: 'bg-label-secondary' },
     };
 
-    function openKamar(id, nomor, tipe, harga, status) {
+    function openKamar(seat) {
+        const id = Number.parseInt(seat.dataset.id, 10);
+        const nomor = seat.dataset.nomor || '-';
+        const tipe = seat.dataset.tipe || '-';
+        const harga = Number.parseInt(seat.dataset.hargaKamar, 10) || 0;
+        const status = seat.dataset.status || '';
         activeKamarId = id;
         if (activeSeat) activeSeat.classList.remove('seat-active');
-        activeSeat = document.querySelector('.seat[data-id="' + id + '"]');
+        activeSeat = seat;
         if (activeSeat) activeSeat.classList.add('seat-active');
 
         const cfg = statusConfig[status] || { label: ucfirst(status), cls: 'bg-label-secondary' };
@@ -659,23 +676,28 @@ $pageTitle = 'Sewa Kamar';
         badge.textContent = cfg.label;
         badge.className   = 'badge rounded-pill mt-1 ' + cfg.cls;
 
-        document.getElementById('form-selesai').action = '/kamars/' + id + '/selesai-sewa';
-        document.getElementById('form-perpanjang').action = '/kamars/' + id + '/perpanjang-sewa';
+        const selesaiForm = document.getElementById('form-selesai');
+        const perpanjangForm = document.getElementById('form-perpanjang');
+        if (selesaiForm) selesaiForm.action = '/kamars/' + id + '/selesai-sewa';
+        if (perpanjangForm) perpanjangForm.action = '/kamars/' + id + '/perpanjang-sewa';
         document.getElementById('form-layout').action = layoutRouteTemplate.replace('__KAMAR_ID__', id);
 
         const sewaKamarBtn  = document.getElementById('btn-sewa-kamar');
         const generateForm = document.getElementById('form-generate-link');
-        const selesaiForm   = document.getElementById('form-selesai');
         const perpanjangBtn = document.getElementById('btn-perpanjang');
         const isTersedia = status === 'tersedia';
         const isTerisi   = status === 'terisi';
 
-        sewaKamarBtn.href = '{{ route("sewas.create") }}?kamar_id=' + id;
-        sewaKamarBtn.classList.toggle('d-none', !isTersedia);
-        generateForm.classList.toggle('d-none', !isTersedia);
-        document.getElementById('input-generate-kamar-id').value = id;
-        selesaiForm.classList.toggle('d-none', !isTerisi);
-        perpanjangBtn.classList.toggle('d-none', !isTerisi);
+        if (sewaKamarBtn) {
+            sewaKamarBtn.href = '{{ route("sewas.create") }}?kamar_id=' + id;
+            sewaKamarBtn.classList.toggle('d-none', !isTersedia);
+        }
+        if (generateForm) {
+            generateForm.classList.toggle('d-none', !isTersedia);
+            document.getElementById('input-generate-kamar-id').value = id;
+        }
+        if (selesaiForm) selesaiForm.classList.toggle('d-none', !isTerisi);
+        if (perpanjangBtn) perpanjangBtn.classList.toggle('d-none', !isTerisi);
 
         const panel = document.getElementById('kamar-info');
         panel.classList.remove('d-none');
@@ -705,18 +727,25 @@ $pageTitle = 'Sewa Kamar';
         modal.show();
     }
 
-    const statusBadge = {
-        aktif:    '<span class="badge rounded-pill bg-label-success">Aktif</span>',
-        selesai:  '<span class="badge rounded-pill bg-label-secondary">Selesai</span>',
-        menunggak:'<span class="badge rounded-pill bg-label-warning">Menunggak</span>',
+    const leaseStatus = {
+        aktif:     { label: 'Aktif', cls: 'bg-label-success' },
+        selesai:   { label: 'Selesai', cls: 'bg-label-secondary' },
+        menunggak: { label: 'Menunggak', cls: 'bg-label-warning' },
     };
+
+    function appendTextCell(row, value) {
+        const cell = document.createElement('td');
+        cell.textContent = String(value ?? '-');
+        row.appendChild(cell);
+        return cell;
+    }
 
     function renderRiwayat(kamarId, nomor, sewas) {
         document.getElementById('riwayat-kamar-label').textContent = 'Kamar ' + nomor;
         const tbody = document.getElementById('riwayat-tbody');
         const empty = document.getElementById('riwayat-empty');
         const rPanel = document.getElementById('riwayat-panel');
-        tbody.innerHTML = '';
+        tbody.replaceChildren();
         rPanel.classList.remove('d-none');
         if (!sewas.length) {
             empty.classList.remove('d-none');
@@ -724,16 +753,32 @@ $pageTitle = 'Sewa Kamar';
         }
         empty.classList.add('d-none');
         sewas.forEach((s, i) => {
-            const badge = statusBadge[s.status] || '<span class="badge rounded-pill bg-label-secondary">' + s.status + '</span>';
-            tbody.innerHTML += `<tr>
-                <td>${i + 1}</td>
-                <td>${s.penghuni}</td>
-                <td>${s.masuk || '-'}</td>
-                <td>${s.keluar || '-'}</td>
-                <td>Rp ${s.biaya.toLocaleString('id-ID')}</td>
-                <td>${badge}</td>
-                <td><a href="/sewas/${s.id}/edit" class="btn btn-sm btn-outline-primary"><i class="bx bx-edit-alt me-1"></i>Edit</a></td>
-            </tr>`;
+            const row = document.createElement('tr');
+            appendTextCell(row, i + 1);
+            appendTextCell(row, s.penghuni || 'Unknown');
+            appendTextCell(row, s.masuk || '-');
+            appendTextCell(row, s.keluar || '-');
+            const amount = Number.parseInt(s.biaya, 10) || 0;
+            appendTextCell(row, 'Rp ' + amount.toLocaleString('id-ID'));
+
+            const statusCell = document.createElement('td');
+            const badgeConfig = leaseStatus[s.status] || { label: String(s.status || '-'), cls: 'bg-label-secondary' };
+            const badge = document.createElement('span');
+            badge.className = 'badge rounded-pill ' + badgeConfig.cls;
+            badge.textContent = badgeConfig.label;
+            statusCell.appendChild(badge);
+            row.appendChild(statusCell);
+
+            const actionCell = document.createElement('td');
+            if (canEditLease) {
+                const editLink = document.createElement('a');
+                editLink.href = '/sewas/' + encodeURIComponent(String(Number.parseInt(s.id, 10) || 0)) + '/edit';
+                editLink.className = 'btn btn-sm btn-outline-primary';
+                editLink.textContent = 'Edit';
+                actionCell.appendChild(editLink);
+            }
+            row.appendChild(actionCell);
+            tbody.appendChild(row);
         });
     }
 
