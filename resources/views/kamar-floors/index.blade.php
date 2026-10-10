@@ -55,7 +55,7 @@ $pageTitle = 'Data Lantai';
                             @endCanMenu
 
                             @canMenu('master_data.data_lantai', 'delete')
-                            <form method="POST" action="{{ route('kamar-floors.destroy', $floor) }}" onsubmit="return confirm('Hapus {{ addslashes($floor->name) }}?')" class="d-inline">
+                            <form method="POST" action="{{ route('kamar-floors.destroy', $floor) }}" data-confirm-message="{{ 'Hapus '.$floor->name.'?' }}" onsubmit="return confirm(this.dataset.confirmMessage)" class="d-inline">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="btn btn-sm btn-action-danger" {{ (int) $floor->kamar_count > 0 ? 'disabled title=Tidak bisa dihapus karena masih dipakai kamar' : '' }}>
