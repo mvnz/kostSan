@@ -25,6 +25,7 @@ Sesuaikan `.env` dengan database masing-masing. Jangan menjalankan migrasi atau 
 
 ## Aturan sewa dan reservasi
 
+- Pada daftar **Reservasi**, pilih **Status reservasi** lalu **Terapkan** untuk menampilkan hanya Menunggu, Dikonfirmasi, Dibatalkan, Dikonversi, atau Kedaluwarsa. Pilihan kosong atau **Reset** menampilkan semua histori. Filter membaca data tanpa mengubah status dan tersedia dengan hak Lihat Data Sewa.
 - Tanggal keluar adalah tanggal checkout: rentang berlaku dari tanggal masuk sampai sebelum tanggal keluar. Checkout dan check-in berikutnya boleh pada tanggal yang sama.
 - Sewa aktif atau menunggak dan reservasi dikonfirmasi memblokir periode yang bertumpang tindih. Tanggal akhir kosong memblokir seluruh periode setelah tanggal mulai. Reservasi menunggu/dibatalkan dan sewa selesai tidak memblokir kamar.
 - Reservasi terkonfirmasi dikonversi lewat tombol **Jadikan Sewa** pada daftar/detail Reservasi. Form memuat kamar, penghuni, dan periode dari reservasi; penyimpanan sewa sekaligus menandai reservasi `dikonversi` dan menautkan kedua riwayat dalam satu transaksi. Membuat sewa biasa tidak boleh melewati reservasi meski penghuni sama. Link publik menciptakan penghuni baru sehingga tetap ditolak bila kamar telah dialokasikan.

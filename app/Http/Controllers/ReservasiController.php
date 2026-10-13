@@ -8,15 +8,26 @@ use App\Models\Reservasi;
 use App\Services\RoomAvailability;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
 class ReservasiController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $reservasis = Reservasi::with('kamar', 'penghuni', 'sewa')->latest('tanggal_reservasi')->get();
+        $validator = Validator::make($request->query(), [
+            'status' => ['nullable', 'string', 'in:menunggu,dikonfirmasi,dibatalkan,dikonversi,kedaluwarsa'],
+        ]);
+        if ($validator->fails()) {
+            throw (new ValidationException($validator))->redirectTo(route('reservasis.index'));
+        }
+        $validated = $validator->validated();
+        $status = $validated['status'] ?? null;
+        $reservasis = Reservasi::with('kamar', 'penghuni', 'sewa')
+            ->when($status, fn ($query) => $query->where('status', $status))
+            ->latest('tanggal_reservasi')->get();
 
-        return view('reservasis.index', compact('reservasis'));
+        return view('reservasis.index', compact('reservasis', 'status'));
     }
 
     public function create()

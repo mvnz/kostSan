@@ -25,6 +25,23 @@ $pageTitle = 'Reservasi';
             @endCanMenu
         </div>
     </div>
+    <form method="GET" action="{{ route('reservasis.index') }}" class="p-3 border-bottom">
+        <div class="row g-3 align-items-end">
+            <div class="col-12 col-md-4">
+                <label for="reservation-status" class="form-label">Status reservasi</label>
+                <select id="reservation-status" name="status" class="form-select">
+                    <option value="">Semua status</option>
+                    @foreach(['menunggu' => 'Menunggu', 'dikonfirmasi' => 'Dikonfirmasi', 'dibatalkan' => 'Dibatalkan', 'dikonversi' => 'Dikonversi', 'kedaluwarsa' => 'Kedaluwarsa'] as $value => $label)
+                    <option value="{{ $value }}" @selected($status === $value)>{{ $label }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-12 col-md-auto d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-primary">Terapkan</button>
+                <a href="{{ route('reservasis.index') }}" class="btn btn-outline-secondary">Reset</a>
+            </div>
+        </div>
+    </form>
     <div class="card-datatable table-responsive">
         <table class="table datatable" id="tbl-reservasi" data-mobile-cols="2,5,6,7">
             <thead>
