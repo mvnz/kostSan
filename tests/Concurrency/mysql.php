@@ -175,17 +175,21 @@ try {
     echo "PASS concurrent reservations: one confirmed, one conflict rejection\n";
 
     $pending = Pembayaran::whereDate('periode', '2026-11-01')->sole();
-    DB::unprepared("CREATE TRIGGER synthetic_ledger_failure BEFORE INSERT ON keuangans FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'synthetic ledger failure'");
+    $pending->update(['jumlah' => 650000]);
+    // A test-only CHECK induces a real DB write failure without SUPER/trigger privileges.
+    DB::statement('ALTER TABLE keuangans ADD CONSTRAINT synthetic_ledger_failure CHECK (jumlah <> 650000)');
     try {
         operate('approve', $pending->id, 0);
         throw new RuntimeException('Expected ledger failure was not raised.');
     } catch (Illuminate\Database\QueryException $exception) {
-        check(str_contains($exception->getMessage(), 'synthetic ledger failure'), 'Unexpected DB failure.');
+        check(str_contains($exception->getMessage(), 'synthetic_ledger_failure'), 'Unexpected DB failure.');
     } finally {
-        DB::unprepared('DROP TRIGGER synthetic_ledger_failure');
+        DB::statement('ALTER TABLE keuangans DROP CHECK synthetic_ledger_failure');
     }
     check($pending->fresh()->status === 'belum_lunas' && $pending->fresh()->tanggal_bayar === null, 'Failed approval was not rolled back.');
     check(Invoice::where('payment_id', $pending->id)->value('status') === 'draft' && ! Keuangan::where('payment_id', $pending->id)->exists(), 'Rollback left invoice/ledger inconsistent.');
+    check((string) $pending->fresh()->jumlah === '650000.00'
+        && (string) Invoice::where('payment_id', $pending->id)->value('jumlah_tagihan') === '650000.00', 'Rollback changed pending amounts.');
     echo "PASS ledger failure rollback: payment/invoice pending, no income\n";
 } catch (Throwable $exception) {
     fwrite(STDERR, get_class($exception).': '.$exception->getMessage()."\n");
