@@ -46,6 +46,8 @@ CSV berisi ID pembayaran, nomor kamar, nama penghuni, periode, tanggal bayar, me
 
 ### Smoke browser dengan data sintetis
 
+Build produksi juga menghasilkan `public/ui/helpers.js`, `public/ui/core.js` dan notice lisensi melalui `npm run build:ui` (otomatis bagian dari `npm run build`). Deploy folder hasil build tersebut bersama aplikasi; jangan membuka UI admin sebelum build selesai. JS UI memakai source Sneat resmi yang dipin dan library npm terkunci, bukan bundle development CDN berbasis eval. CSP tidak memerlukan `unsafe-eval`. Source/asal lisensi ada di `resources/vendor/sneat/README.md`; CSS Sneat dipin ke revision yang sama. `npm run dev` saja tidak membangun bundle klasik ini; jalankan `npm run build:ui` saat menyiapkan development lokal.
+
 CI menjalankan Playwright pada ponsel (390px), tablet (768px) dan desktop (1440px): login, menu mobile, tujuh halaman operasional, form reservasi termasuk error/pemulihan, detail viewer dan CSRF. Laporan, screenshot serta trace kegagalan tersedia pada artifact **browser-smoke-evidence**. Ini simulasi otomatis, bukan UAT manusia atau bukti seluruh UI telah diuji; aset CDN harus termuat agar pemeriksaan layout lulus.
 
 Untuk menjalankan lokal di checkout uji, siapkan `.env` dan key aplikasi, lalu gunakan database **baru** yang khusus untuk browser (jangan memakai database operasional):

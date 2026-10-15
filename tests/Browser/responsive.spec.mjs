@@ -1,5 +1,19 @@
 import { test, expect } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+    page.on('pageerror', error => {
+        // A JS exception is an operational failure even if the page still renders.
+        page.__runtimeErrors ??= [];
+        page.__runtimeErrors.push(error.message);
+    });
+});
+
+test.afterEach(async ({ page }, testInfo) => {
+    const errors = page.__runtimeErrors ?? [];
+    if (errors.length) await testInfo.attach('javascript-errors', { body: JSON.stringify(errors, null, 2), contentType: 'application/json' });
+    expect(errors, 'Browser must not have uncaught JavaScript/CSP errors').toEqual([]);
+});
+
 async function login(page, kind) {
     await page.goto('/login');
     await page.locator('[name="email"]').fill(`${kind}@browser.example.test`);
