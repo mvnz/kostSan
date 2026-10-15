@@ -44,6 +44,7 @@ jobs:
           npm audit --audit-level=low
           npm test
           npm run build
+          php artisan kost:check-ui --no-interaction
       - name: Compile routes and views
         run: |
           php artisan route:cache
@@ -90,6 +91,7 @@ jobs:
           php artisan migrate --force
           php tests/Browser/seed.php
           npm run build
+          php artisan kost:check-ui --no-interaction
       - name: Test phone, tablet and desktop
         run: npm run test:browser
       - name: Preserve browser evidence

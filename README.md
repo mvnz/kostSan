@@ -50,6 +50,8 @@ Build produksi juga menghasilkan `public/ui/helpers.js`, `public/ui/core.js` dan
 
 CI menjalankan Playwright pada ponsel (390px), tablet (768px) dan desktop (1440px): login, menu mobile, tujuh halaman operasional, form reservasi termasuk error/pemulihan, detail viewer dan CSRF. Laporan, screenshot serta trace kegagalan tersedia pada artifact **browser-smoke-evidence**. Ini simulasi otomatis, bukan UAT manusia atau bukti seluruh UI telah diuji; aset CDN harus termuat agar pemeriksaan layout lulus.
 
+Sebelum membuka traffic pada release directory, jalankan `php artisan kost:check-ui --no-interaction`. Perintah read-only ini mengembalikan exit 1 dan nama berkas bila `public/ui/helpers.js`, `core.js`, atau `LICENSES.txt` hilang, tidak terbaca, atau kosong. Bangun ulang di lingkungan build dengan `npm ci --ignore-scripts && npm run build`, sertakan output `public/ui` dalam paket, lalu ulangi cek. Exit 0 hanya membuktikan kelengkapan tiga berkas, bukan freshness/validitas JS, koneksi CDN, atau kesiapan produksi. Tidak mengakses database, memperbaiki berkas otomatis, maupun menampilkan konfigurasi/secret; smoke browser tetap wajib.
+
 Untuk menjalankan lokal di checkout uji, siapkan `.env` dan key aplikasi, lalu gunakan database **baru** yang khusus untuk browser (jangan memakai database operasional):
 
 ```sh
