@@ -43,6 +43,7 @@ use App\Models\Sewa;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\Process\Process;
 
@@ -136,6 +137,12 @@ try {
     check(Artisan::call('migrate', ['--force' => true]) === 0, 'Fresh migrations failed.');
     check(Artisan::call('migrate:rollback', ['--step' => 1, '--force' => true]) === 0, 'Latest migration rollback failed.');
     check(Artisan::call('migrate', ['--force' => true]) === 0, 'Migration reapply failed.');
+    $coverageMigration = require $root.'/database/migrations/2026_10_09_010000_add_billing_coverage_to_pembayarans.php';
+    $coverageMigration->down();
+    check(Schema::hasForeignKey('pembayarans', ['sewa_id']) && Schema::hasIndex('pembayarans', ['sewa_id']), 'Coverage rollback lost lease FK/index.');
+    check(! Schema::hasColumn('pembayarans', 'coverage_start') && ! Schema::hasColumn('pembayarans', 'coverage_end'), 'Coverage rollback left columns.');
+    $coverageMigration->up();
+    echo "PASS coverage rollback preserves lease FK and supporting index\n";
     $migrationCount = DB::table('migrations')->count();
     check($migrationCount > 0, 'No migrations were exercised.');
     check(Artisan::call('migrate:rollback', ['--step' => $migrationCount, '--force' => true]) === 0, 'Full migration rollback failed.');
