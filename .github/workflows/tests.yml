@@ -48,3 +48,56 @@ jobs:
         run: |
           php artisan route:cache
           php artisan view:cache
+
+  browser-smoke:
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      APP_ENV: testing
+      APP_DEBUG: 'false'
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ${{ github.workspace }}/storage/framework/testing/browser.sqlite
+      DB_URL: ''
+      CACHE_STORE: array
+      SESSION_DRIVER: file
+      MAIL_MAILER: array
+      WHATSAPP_ENABLED: 'false'
+      WHATSAPP_TOKEN: ''
+      BROWSER_TEST_PASSWORD: SyntheticBrowserOnly123
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, dom, xml, xmlwriter, sqlite3, pdo_sqlite, fileinfo, curl, zip
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install test dependencies and browser
+        run: |
+          composer install --no-interaction --prefer-dist
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx playwright install --with-deps chromium --only-shell
+      - name: Prepare isolated synthetic browser database
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          mkdir -p storage/framework/testing
+          touch "$DB_DATABASE"
+          php artisan migrate --force
+          php tests/Browser/seed.php
+          npm run build
+      - name: Test phone, tablet and desktop
+        run: npm run test:browser
+      - name: Preserve browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-smoke-evidence
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

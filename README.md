@@ -44,6 +44,30 @@ CSV berisi ID pembayaran, nomor kamar, nama penghuni, periode, tanggal bayar, me
 
 ## Pengujian dan kelanjutan review
 
+### Smoke browser dengan data sintetis
+
+CI menjalankan Playwright pada ponsel (390px), tablet (768px) dan desktop (1440px): login, menu mobile, tujuh halaman operasional, form reservasi termasuk error/pemulihan, detail viewer dan CSRF. Laporan, screenshot serta trace kegagalan tersedia pada artifact **browser-smoke-evidence**. Ini simulasi otomatis, bukan UAT manusia atau bukti seluruh UI telah diuji; aset CDN harus termuat agar pemeriksaan layout lulus.
+
+Untuk menjalankan lokal di checkout uji, siapkan `.env` dan key aplikasi, lalu gunakan database **baru** yang khusus untuk browser (jangan memakai database operasional):
+
+```sh
+export APP_ENV=testing DB_CONNECTION=sqlite DB_URL=''
+export DB_DATABASE="$PWD/storage/framework/testing/browser.sqlite"
+export CACHE_STORE=array SESSION_DRIVER=file MAIL_MAILER=array
+export WHATSAPP_ENABLED=false WHATSAPP_TOKEN=''
+export BROWSER_TEST_PASSWORD=SyntheticBrowserOnly123
+mkdir -p storage/framework/testing
+touch "$DB_DATABASE"
+php artisan migrate --force
+php tests/Browser/seed.php
+npm ci --ignore-scripts
+npx playwright install --with-deps chromium --only-shell
+npm run build
+npm run test:browser
+```
+
+Fixture menolak environment non-testing, koneksi selain SQLite, path selain file khusus tersebut, symlink, password pendek dan database yang sudah berisi pengguna/kamar/penghuni. Server browser selalu localhost port 8115, tidak menggunakan server yang sudah berjalan, dan memakai CSRF normal. Kredensial di atas hanya untuk fixture sintetis; tidak dibuat oleh seeder instalasi aplikasi. Untuk run ulang, gunakan checkout uji baru atau arsipkan database browser lama terlebih dahulu; jangan menghapus database operasional.
+
 ```sh
 composer validate --strict
 composer check-platform-reqs
