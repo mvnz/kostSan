@@ -21,8 +21,8 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('reservasis', function (Blueprint $table): void {
-            $table->dropUnique('reservasis_sewa_id_unique');
             $table->dropForeign(['sewa_id']);
+            $table->dropUnique('reservasis_sewa_id_unique');
         });
 
         Schema::table('reservasis', function (Blueprint $table): void {

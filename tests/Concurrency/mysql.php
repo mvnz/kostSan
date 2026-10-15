@@ -147,7 +147,8 @@ try {
     $results = race('approve', 'kamars', $room->id, $payment->id, [0, 0]);
     check(array_column($results, 'result') === ['ok', 'ok'], 'Approval retry did not succeed.');
     check($payment->fresh()->status === 'lunas' && Invoice::where('payment_id', $payment->id)->count() === 1, 'Approval payment/invoice mismatch.');
-    check(Invoice::where('payment_id', $payment->id)->value('status') === 'lunas', 'Invoice not approved.');
+    check(Invoice::where('payment_id', $payment->id)->value('status') === 'lunas'
+        && (string) Invoice::where('payment_id', $payment->id)->value('jumlah_tagihan') === '550000.00', 'Invoice status/amount mismatch.');
     check(Keuangan::where('payment_id', $payment->id)->count() === 1 && (string) Keuangan::where('payment_id', $payment->id)->value('jumlah') === '550000.00', 'Duplicate or incorrect ledger.');
     echo "PASS concurrent approval: one paid invoice and one income 550000\n";
 
@@ -157,6 +158,9 @@ try {
     check($states === ['ok', 'validation'], 'Overlapping bill did not reject exactly one request.');
     check(in_array(['result' => 'validation', 'fields' => ['periode']], $results, true), 'Unexpected billing validation.');
     check(Pembayaran::whereDate('periode', '2026-11-01')->count() === 1 && Invoice::count() === 2, 'Duplicate bill/invoice persisted.');
+    $bill = Pembayaran::whereDate('periode', '2026-11-01')->sole();
+    check($bill->coverage_start->toDateString() === '2026-11-01' && $bill->coverage_end->toDateString() === '2026-12-01'
+        && (string) $bill->jumlah === '550000.00' && (string) $bill->invoice->jumlah_tagihan === '550000.00', 'Bill coverage or invoice amount mismatch.');
     echo "PASS concurrent billing: one bill, one overlap rejection\n";
 
     $available = Kamar::create(['nomor' => 'MYSQL-02', 'tipe' => 'Test', 'harga_bulanan' => 550000, 'status' => 'tersedia']);
@@ -166,6 +170,8 @@ try {
     check($states === ['ok', 'validation'], 'Conflicting reservation did not reject exactly one request.');
     check(in_array(['result' => 'validation', 'fields' => ['kamar_id']], $results, true), 'Unexpected reservation validation.');
     check(Reservasi::where('kamar_id', $available->id)->count() === 1, 'Conflicting reservations persisted.');
+    $reservation = Reservasi::where('kamar_id', $available->id)->sole();
+    check($reservation->status === 'dikonfirmasi' && in_array($reservation->penghuni_id, [$resident->id, $other->id], true), 'Reservation state/owner mismatch.');
     echo "PASS concurrent reservations: one confirmed, one conflict rejection\n";
 
     $pending = Pembayaran::whereDate('periode', '2026-11-01')->sole();
