@@ -136,6 +136,12 @@ try {
     check(Artisan::call('migrate', ['--force' => true]) === 0, 'Fresh migrations failed.');
     check(Artisan::call('migrate:rollback', ['--step' => 1, '--force' => true]) === 0, 'Latest migration rollback failed.');
     check(Artisan::call('migrate', ['--force' => true]) === 0, 'Migration reapply failed.');
+    $migrationCount = DB::table('migrations')->count();
+    check($migrationCount > 0, 'No migrations were exercised.');
+    check(Artisan::call('migrate:rollback', ['--step' => $migrationCount, '--force' => true]) === 0, 'Full migration rollback failed.');
+    check(DB::table('migrations')->count() === 0 && count(DB::select('SHOW TABLES')) === 1, 'Full rollback left application tables or migration records.');
+    check(Artisan::call('migrate', ['--force' => true]) === 0 && DB::table('migrations')->count() === $migrationCount, 'Full migration reapply failed.');
+    echo "PASS full migration cycle: {$migrationCount} applied, rolled back and reapplied before synthetic seeding\n";
     echo 'ENGINE '.json_encode(DB::selectOne('SELECT VERSION() AS version, @@transaction_isolation AS isolation_level'))."\n";
 
     $room = Kamar::create(['nomor' => 'MYSQL-01', 'tipe' => 'Test', 'harga_bulanan' => 550000, 'status' => 'terisi']);
