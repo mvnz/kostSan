@@ -17,6 +17,12 @@ return new class extends Migration
 
     public function down(): void
     {
+        // Preserve the lease FK when InnoDB uses the coverage index to support it.
+        if (! Schema::hasIndex('pembayarans', ['sewa_id'])) {
+            Schema::table('pembayarans', function (Blueprint $table) {
+                $table->index('sewa_id');
+            });
+        }
         Schema::table('pembayarans', function (Blueprint $table) {
             $table->dropIndex('payments_billing_coverage');
             $table->dropColumn(['coverage_start', 'coverage_end']);

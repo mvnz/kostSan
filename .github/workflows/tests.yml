@@ -9,6 +9,51 @@ permissions:
   contents: read
 
 jobs:
+  mysql-concurrency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: SyntheticRootOnly123
+          MYSQL_DATABASE: kostsan_concurrency_test
+          MYSQL_USER: kostsan_ci
+          MYSQL_PASSWORD: SyntheticMysqlOnly123
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    env:
+      APP_ENV: testing
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_DATABASE: kostsan_concurrency_test
+      DB_USERNAME: kostsan_ci
+      DB_PASSWORD: SyntheticMysqlOnly123
+      DB_URL: ''
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      MAIL_MAILER: array
+      WHATSAPP_ENABLED: 'false'
+      WHATSAPP_TOKEN: ''
+      PAO_DISABLE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, dom, xml, xmlwriter, pdo_mysql, fileinfo, curl, zip
+          coverage: none
+      - name: Install and prepare isolated application
+        run: |
+          composer install --no-interaction --prefer-dist
+          cp .env.example .env
+          php artisan key:generate
+      - name: Real concurrent transactions and rollback on MySQL
+        run: php tests/Concurrency/mysql.php
+
   tests:
     runs-on: ubuntu-latest
     steps:

@@ -17,8 +17,9 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('sewa_payment_links', function (Blueprint $table): void {
+            $table->dropForeign(['payment_id']);
             $table->dropIndex('payment_links_payment_usage');
-            $table->dropConstrainedForeignId('payment_id');
+            $table->dropColumn('payment_id');
         });
     }
 };

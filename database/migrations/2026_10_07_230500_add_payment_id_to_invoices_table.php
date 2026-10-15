@@ -43,8 +43,9 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('invoices', function (Blueprint $table): void {
+            $table->dropForeign(['payment_id']);
             $table->dropUnique(['payment_id']);
-            $table->dropConstrainedForeignId('payment_id');
+            $table->dropColumn('payment_id');
         });
     }
 };

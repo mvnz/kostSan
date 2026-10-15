@@ -21,10 +21,11 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('keuangans', function (Blueprint $table) {
+            $table->dropForeign(['payment_id']);
             $table->dropUnique(['payment_id']);
         });
         Schema::table('keuangans', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('payment_id');
+            $table->dropColumn('payment_id');
         });
     }
 };
