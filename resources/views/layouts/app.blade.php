@@ -2,7 +2,7 @@
 <html
   lang="id"
   class="layout-menu-fixed layout-compact"
-  data-assets-path="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@main/assets/"
+  data-assets-path="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@de094c2bf89e602054b7c14f46c9a3a5b9f6cac9/assets/"
   data-template="vertical-menu-template-free">
 <head>
     <meta charset="utf-8" />
@@ -16,14 +16,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet" />
 
     <!-- Iconify / Boxicons Icons (via Sneat CDN) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@main/assets/vendor/fonts/iconify-icons.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@de094c2bf89e602054b7c14f46c9a3a5b9f6cac9/assets/vendor/fonts/iconify-icons.css" />
 
     <!-- Sneat Core CSS -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@main/assets/vendor/css/core.css" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@main/assets/css/demo.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@de094c2bf89e602054b7c14f46c9a3a5b9f6cac9/assets/vendor/css/core.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@de094c2bf89e602054b7c14f46c9a3a5b9f6cac9/assets/css/demo.css" />
 
     <!-- Perfect Scrollbar -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@main/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@de094c2bf89e602054b7c14f46c9a3a5b9f6cac9/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.css" />
 
     <!-- jQuery DataTables + Bootstrap 5 -->
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css" />
@@ -754,8 +754,7 @@
     </style>
 
     <!-- Template Helpers & Config (must be in <head>) -->
-    <script src="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@main/assets/vendor/js/helpers.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@main/assets/js/config.js"></script>
+    <script src="{{ asset('ui/helpers.js') }}"></script>
 </head>
 
 <body>
@@ -1162,16 +1161,7 @@
     <!-- / Layout wrapper -->
 
     <!-- ─── CORE JS (order matters) ─── -->
-    <script src="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@main/assets/vendor/libs/jquery/jquery.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@main/assets/vendor/libs/popper/popper.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@main/assets/vendor/js/bootstrap.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@main/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@main/assets/vendor/js/menu.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/themeselection/sneat-bootstrap-html-admin-template-free@main/assets/js/main.js"></script>
-
-    <!-- jQuery DataTables + Bootstrap 5 -->
-    <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
+    <script src="{{ asset('ui/core.js') }}"></script>
     <script>
         $(document).ready(function () {
             const isMobileView = window.matchMedia('(max-width: 767.98px)').matches;

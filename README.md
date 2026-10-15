@@ -44,6 +44,34 @@ CSV berisi ID pembayaran, nomor kamar, nama penghuni, periode, tanggal bayar, me
 
 ## Pengujian dan kelanjutan review
 
+### Smoke browser dengan data sintetis
+
+Build produksi juga menghasilkan `public/ui/helpers.js`, `public/ui/core.js` dan notice lisensi melalui `npm run build:ui` (otomatis bagian dari `npm run build`). Deploy folder hasil build tersebut bersama aplikasi; jangan membuka UI admin sebelum build selesai. JS UI memakai source Sneat resmi yang dipin dan library npm terkunci, bukan bundle development CDN berbasis eval. CSP tidak memerlukan `unsafe-eval`. Source/asal lisensi ada di `resources/vendor/sneat/README.md`; CSS Sneat dipin ke revision yang sama. `npm run dev` saja tidak membangun bundle klasik ini; jalankan `npm run build:ui` saat menyiapkan development lokal.
+
+CI menjalankan Playwright pada ponsel (390px), tablet (768px) dan desktop (1440px): login, menu mobile, tujuh halaman operasional, form reservasi termasuk error/pemulihan, detail viewer dan CSRF. Laporan, screenshot serta trace kegagalan tersedia pada artifact **browser-smoke-evidence**. Ini simulasi otomatis, bukan UAT manusia atau bukti seluruh UI telah diuji; aset CDN harus termuat agar pemeriksaan layout lulus.
+
+Sebelum membuka traffic pada release directory, jalankan `php artisan kost:check-ui --no-interaction`. Perintah read-only ini mengembalikan exit 1 dan nama berkas bila `public/ui/helpers.js`, `core.js`, atau `LICENSES.txt` hilang, tidak terbaca, atau kosong. Bangun ulang di lingkungan build dengan `npm ci --ignore-scripts && npm run build`, sertakan output `public/ui` dalam paket, lalu ulangi cek. Exit 0 hanya membuktikan kelengkapan tiga berkas, bukan freshness/validitas JS, koneksi CDN, atau kesiapan produksi. Tidak mengakses database, memperbaiki berkas otomatis, maupun menampilkan konfigurasi/secret; smoke browser tetap wajib.
+
+Untuk menjalankan lokal di checkout uji, siapkan `.env` dan key aplikasi, lalu gunakan database **baru** yang khusus untuk browser (jangan memakai database operasional):
+
+```sh
+export APP_ENV=testing DB_CONNECTION=sqlite DB_URL=''
+export DB_DATABASE="$PWD/storage/framework/testing/browser.sqlite"
+export CACHE_STORE=array SESSION_DRIVER=file MAIL_MAILER=array
+export WHATSAPP_ENABLED=false WHATSAPP_TOKEN=''
+export BROWSER_TEST_PASSWORD=SyntheticBrowserOnly123
+mkdir -p storage/framework/testing
+touch "$DB_DATABASE"
+php artisan migrate --force
+php tests/Browser/seed.php
+npm ci --ignore-scripts
+npx playwright install --with-deps chromium --only-shell
+npm run build
+npm run test:browser
+```
+
+Fixture menolak environment non-testing, koneksi selain SQLite, path selain file khusus tersebut, symlink, password pendek dan database yang sudah berisi pengguna/kamar/penghuni. Server browser selalu localhost port 8115, tidak menggunakan server yang sudah berjalan, dan memakai CSRF normal. Kredensial di atas hanya untuk fixture sintetis; tidak dibuat oleh seeder instalasi aplikasi. Untuk run ulang, gunakan checkout uji baru atau arsipkan database browser lama terlebih dahulu; jangan menghapus database operasional.
+
 ```sh
 composer validate --strict
 composer check-platform-reqs
