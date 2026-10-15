@@ -17,3 +17,19 @@
 - Retest ketujuh kategori browser pada source publikasi masih menjadi gerbang CI; baca hasil run yang terasosiasi dengan head PR #6 sebelum menyatakan lulus. Tidak merge bila belum terverifikasi.
 
 Prioritas sesudah ini: concurrency pada engine DB deployment yang disepakati dan terisolasi, validasi paket release pada environment representatif (bukan hanya file lokal), lalu UAT manusia sesuai skenario checkpoint CSP. UAT dan pentest deployment belum dilakukan. Tidak ada fitur bisnis baru untuk mengisi waktu; peningkatan ini mencegah kelalaian paket aset yang kebutuhan operasionalnya sudah terbukti.
+
+## Checkpoint publikasi dan tujuh kategori
+
+Source fitur diuji ulang setelah fetch: `612c8294130c2c484f69c7e6efa620cd1e79edb4`, tree `1504eb04cc51f4552d699348bedc24caf61e4733`. [CI 38740029756](https://github.com/mvnz/kostSan/actions/runs/38740029756) kedua job sukses; command menerima hasil build nyata di CI, browser **9/9 lulus (18,2 detik)**. Source publikasi lokal mengulang 194/1336, frontend 7, command dan HTTP: approval berulang tetap satu invoice/satu ledger Rp550.000. Pemindaian pola private key/GitHub token/AWS key pada berkas tracked tidak menemukan kecocokan; bukan audit secret menyeluruh. Checkpoint ini ditambahkan sebagai delta dokumentasi saja; head terbaru dan hasil CI ulang dibaca dari PR #6, jangan menyamakan SHA kode fitur dengan SHA dokumentasi lanjutan.
+
+| Kategori | Status | Bukti dan batas |
+|---|---|---|
+| Functional | LULUS | Empat tes command pada filesystem sintetis, paket valid/invalid/parsial/kosong; command pada output build nyata; suite194. |
+| User flow & transaction | LULUS | Browser admin/viewer/guest; HTTP sepuluh halaman, approval retry tetap tepat satu invoice/ledger Rp550.000; suite rollback/duplikasi. Concurrency engine deployment belum diuji. |
+| Responsive | LULUS | Retest browser ketiga viewport pada tujuh halaman/form, menu, tabel, overflow dan error recovery. Command tidak mengubah UI; bukan seluruh perangkat/dialog. |
+| Bug & regression | LULUS | Suite194/1336, frontend7, build, migrasi rollback/migrate, cache, browser9/9. Ini peningkatan packaging; tidak mengklaim bug bisnis baru diperbaiki. |
+| Retest | LULUS | Kasus command yang gagal sebelum implementasi diulang lulus; skenario menu/DataTables/CSP dan approval lama diulang tanpa melemahkan assertion. |
+| User testing | BELUM DIUJI | Simulasi agen admin/viewer/guest lulus; belum ada peserta manusia/UAT. Gunakan skenario UAT checkpoint CSP dan uji operator menindaklanjuti pesan paket hilang tanpa mengubah produksi. |
+| Security | LULUS | Lingkup lokal/CI: suite autentikasi/otorisasi/CSRF/input/XSS/file privat/link, dependency audit, pola secret dan command tanpa DB/mutasi. Permission OS khusus dan pentest deployment belum diuji. |
+
+PR #6 tetap draft, belum merge, tidak konflik pada saat publikasi; main tetap SHA di atas. Kelengkapan berkas tidak membuktikan freshness/isi aman atau ASSET_URL/CDN benar di deployment. Status keseluruhan **belum siap operasional penuh**; tiga gate berikutnya tetap concurrency DB representatif, validasi release environment, dan UAT manusia.
