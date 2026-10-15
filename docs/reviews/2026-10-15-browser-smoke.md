@@ -38,3 +38,5 @@
 | Security | LULUS dalam lingkup lokal | Auth/izin/CSRF/fixture guard, dependency audit dan suite private file/link lulus; CSP dipertahankan. Bukan pentest deployment. |
 
 Prioritas berikutnya adalah blocker aset produksi/CSP di atas, sebelum fitur bisnis baru. PR #4/#5/#6 tetap draft dan tidak di-merge. Pertahankan fixture dan assertion ini sebagai reproduksi; setelah fix, wajib ulang semua kategori. Untuk UAT manusia berikutnya, operator harus mampu membuka menu, menelusuri kamar/penghuni/reservasi/sewa/tagihan dan menyelesaikan form pada ketiga viewport; catat peserta/perangkat, pesan error dan pemulihan. Belum ada pengguna lain yang dihubungi.
+
+Pembaruan lanjutan 15 Oktober 2026: blocker aset/CSP di atas sudah diperbaiki pada `286e6df2832e956c019b10c23fff2aa6b93115e3`; CI browser 9/9 lulus. Bukti awal di dokumen ini tetap merupakan catatan historis, bukan status akhir. Lihat [checkpoint perbaikan dan batas validasi](2026-10-15-csp-production-ui.md).
