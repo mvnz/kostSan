@@ -52,6 +52,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\Process\Process;
+use Symfony\Component\Process\InputStream;
 
 function check(bool $condition, string $message): void
 {
@@ -66,6 +67,16 @@ function operatorRequest(string $uri, string $method, array $payload, int $opera
     $request->setUserResolver(fn () => User::findOrFail($operator));
 
     return $request;
+}
+
+function moveLease(Sewa $lease, int $roomId): void
+{
+    app(SewaController::class)->update(Request::create('/sewas/'.$lease->id, 'PUT', [
+        'kamar_id' => $roomId, 'penghuni_id' => $lease->penghuni_id,
+        'tanggal_masuk' => $lease->tanggal_masuk->toDateString(),
+        'tanggal_keluar' => $lease->tanggal_keluar?->toDateString(),
+        'biaya_bulanan' => $lease->biaya_bulanan, 'status' => $lease->status,
+    ]), $lease);
 }
 
 function checkBalancedReversal(Pembayaran $payment, Keuangan $income, string $amount): void
@@ -168,7 +179,15 @@ try {
     if (($argv[1] ?? '') === 'worker') {
         check(ctype_digit($argv[3] ?? '') && ctype_digit($argv[4] ?? ''), 'Invalid worker identifiers.');
         try {
-            operate($argv[2], (int) $argv[3], (int) $argv[4]);
+            if ($argv[2] === 'paused-lease-update') {
+                $bound = Sewa::findOrFail((int) $argv[3]);
+                echo "BOUND\n";
+                fflush(STDOUT);
+                check(trim((string) fgets(STDIN)) === 'continue', 'Missing synthetic binding handoff.');
+                moveLease($bound, (int) $argv[4]);
+            } else {
+                operate($argv[2], (int) $argv[3], (int) $argv[4]);
+            }
             echo json_encode(['result' => 'ok']);
         } catch (ValidationException $exception) {
             echo json_encode(['result' => 'validation', 'fields' => array_keys($exception->errors())]);
@@ -487,6 +506,55 @@ try {
         if (DB::transactionLevel() > 0) {
             DB::rollBack();
         }
+        if ($worker->isRunning()) {
+            $worker->stop(1);
+        }
+    }
+    $editRooms = collect(['A', 'B', 'C'])->map(fn ($name) => Kamar::create([
+        'nomor' => 'MYSQL-EDIT-'.$name, 'tipe' => 'Test', 'harga_bulanan' => 550000,
+        'status' => $name === 'A' ? 'terisi' : 'tersedia',
+    ]));
+    $editLease = Sewa::create(['kamar_id' => $editRooms[0]->id, 'penghuni_id' => $resident->id,
+        'tanggal_masuk' => '2026-10-01', 'tanggal_keluar' => '2026-11-01', 'biaya_bulanan' => 550000, 'status' => 'aktif']);
+    $input = new InputStream();
+    $worker = new Process([PHP_BINARY, __FILE__, 'worker', 'paused-lease-update', (string) $editLease->id, (string) $editRooms[2]->id], $root);
+    $worker->setInput($input);
+    $worker->setTimeout(25);
+    try {
+        $worker->start();
+        check($worker->waitUntil(fn ($type, $output) => str_contains($output, "BOUND\n")), 'Worker did not bind original lease.');
+        moveLease($editLease->fresh(), $editRooms[1]->id);
+        DB::beginTransaction();
+        Kamar::whereKey($editRooms[1]->id)->lockForUpdate()->firstOrFail();
+        $input->write("continue\n");
+        $input->close();
+        $deadline = microtime(true) + 15;
+        do {
+            $worker->checkTimeout();
+            $waiting = array_filter(DB::select('SHOW FULL PROCESSLIST'), fn ($thread) =>
+                $thread->db === 'kostsan_concurrency_test'
+                && preg_match('/^update `kamars`/i', (string) $thread->Info));
+            if (count($waiting) === 1 || ! $worker->isRunning()) {
+                break;
+            }
+            usleep(20000);
+        } while (microtime(true) < $deadline);
+        check(count($waiting) === 1 || ! $worker->isRunning(), 'Stale edit never reached rejection or room-write barrier.');
+        echo count($waiting) === 1 ? "CONTENTION stale edit/checkout: update waits for actual room after locking lease\n" : "STALE edit rejected before touching actual room\n";
+        app(KamarController::class)->selesaiSewa($editRooms[1]->fresh());
+        DB::commit();
+        check($worker->wait() === 0, 'Stale update worker failed: '.$worker->getErrorOutput().$worker->getOutput());
+        $lines = explode("\n", trim($worker->getOutput()));
+        check(json_decode(end($lines), true, flags: JSON_THROW_ON_ERROR) === ['result' => 'validation', 'fields' => ['sewa']], 'Update did not reject unlocked source.');
+        check($editLease->fresh()->kamar_id === $editRooms[1]->id && $editLease->fresh()->status === 'selesai'
+            && (string) $editLease->fresh()->biaya_bulanan === '550000.00', 'Stale edit changed source/amount or checkout failed.');
+        check($editRooms->every(fn ($room) => $room->fresh()->status === 'tersedia'), 'Stale edit/checkout corrupted room states.');
+        echo "PASS stale edit/checkout: unlocked source rejected, checkout finished, no wrong-room mutation\n";
+    } finally {
+        if (DB::transactionLevel() > 0) {
+            DB::rollBack();
+        }
+        $input->close();
         if ($worker->isRunning()) {
             $worker->stop(1);
         }
