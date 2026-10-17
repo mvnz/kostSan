@@ -76,6 +76,20 @@ test('viewer reads details without gaining mutation rights', async ({ page }) =>
     await expect(page.getByRole('button', { name: 'Approve pembayaran', exact: true })).toHaveCount(0);
 });
 
+test('reversed income explains protection without offering unlink or edit', async ({ page }, testInfo) => {
+    await login(page, 'admin');
+    // The dedicated fixture's first finance entry is the reconciled reversal source.
+    await page.goto('/keuangans/1');
+    await expect(page.getByText('Synthetic reversed manual income', { exact: true })).toBeVisible();
+    await expect(page.locator('.alert-info')).toContainText('Pemasukan asal pembalikan tidak dapat');
+    await expect(page.getByRole('button', { name: 'Lepas tautan dengan audit' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Edit transaksi' })).toHaveCount(0);
+    await checkLayout(page, testInfo, 'reversal-source-protection');
+    await page.getByRole('link', { name: 'Pembayaran asal', exact: true }).click();
+    await expect(page).toHaveURL(/\/pembayarans\/2$/);
+    await expect(page.getByText('Dibalik penuh (riwayat lunas dipertahankan)', { exact: true })).toBeVisible();
+});
+
 test('guest cannot mutate without a CSRF token', async ({ page }) => {
     await page.goto('/login');
     const response = await page.request.post('/login', {

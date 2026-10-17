@@ -117,6 +117,9 @@ $pageTitle = 'Keuangan';
                     <td>Rp {{ number_format((float)$item->jumlah,0,',','.') }}</td>
                     <td>
                         {{ $item->deskripsi ?: '-' }}
+                        @if($item->originalReversals->isNotEmpty())
+                            <span class="badge bg-label-info d-block mt-1" style="width: fit-content;">Pemasukan asal pembalikan</span>
+                        @endif
                         @if($item->manually_linked_at)
                             <span class="badge bg-label-warning d-block mt-1" style="width: fit-content;">Rekonsiliasi manual · Pembayaran #{{ $item->payment_id }}</span>
                         @elseif($item->payment_id)
@@ -149,15 +152,19 @@ $pageTitle = 'Keuangan';
                                     <i class="icon-base bx bx-detail me-1"></i>Detail
                                 </a>
                             @canMenu('keuangan.data_keuangan', 'update')
+                            @if($item->originalReversals->isEmpty())
                             <a href="{{ route('keuangans.edit', $item) }}" class="btn btn-sm btn-edit-fancy">
                                 <i class="icon-base bx bx-edit-alt me-1"></i>Edit
                             </a>
+                            @endif
                             @endCanMenu
                             @canMenu('keuangan.data_keuangan', 'delete')
+                            @if($item->originalReversals->isEmpty())
                             <form method="POST" action="{{ route('keuangans.destroy', $item) }}" onsubmit="return confirm('Hapus transaksi ini?')" class="d-inline">
                                 @csrf @method('DELETE')
                                 <button type="submit" class="btn btn-sm btn-action-danger"><i class="icon-base bx bx-trash me-1"></i>Delete</button>
                             </form>
+                            @endif
                             @endCanMenu
                             @endif
                         </div>

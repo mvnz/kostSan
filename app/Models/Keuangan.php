@@ -31,6 +31,11 @@ class Keuangan extends Model
         return $this->hasOne(PaymentReversal::class, 'reversal_entry_id');
     }
 
+    public function originalReversals(): HasMany
+    {
+        return $this->hasMany(PaymentReversal::class, 'original_entry_id');
+    }
+
     public function linkAudits(): HasMany
     {
         return $this->hasMany(FinancePaymentLinkAudit::class, 'ledger_entry_id');

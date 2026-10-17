@@ -57,5 +57,22 @@ Illuminate\Support\Facades\DB::transaction(function (): void {
         'sewa_id' => $lease->id, 'periode' => now()->startOfMonth(),
         'jumlah' => 550000, 'metode' => 'cash', 'status' => 'belum_lunas',
     ]);
+    $reversed = App\Models\Pembayaran::create([
+        'sewa_id' => $lease->id, 'periode' => now()->startOfMonth(), 'tanggal_bayar' => now()->toDateString(),
+        'jumlah' => 550000.25, 'metode' => 'cash', 'status' => 'lunas',
+    ]);
+    $income = App\Models\Keuangan::create([
+        'payment_id' => $reversed->id, 'manually_linked_at' => now(),
+        'tanggal' => now()->toDateString(), 'jenis' => 'pemasukan', 'kategori' => 'Sewa Kamar',
+        'deskripsi' => 'Synthetic reversed manual income', 'jumlah' => 550000.25,
+    ]);
+    $offset = App\Models\Keuangan::create([
+        'tanggal' => now()->toDateString(), 'jenis' => 'pengeluaran', 'kategori' => 'Pembalikan Pembayaran',
+        'deskripsi' => 'Synthetic reversal offset', 'jumlah' => 550000.25,
+    ]);
+    App\Models\PaymentReversal::create([
+        'payment_id' => $reversed->id, 'original_entry_id' => $income->id, 'reversal_entry_id' => $offset->id,
+        'reversal_date' => now()->toDateString(), 'reason' => 'Synthetic browser reversal',
+    ]);
 });
 fwrite(STDOUT, "Synthetic browser fixture ready; no notifications sent.\n");

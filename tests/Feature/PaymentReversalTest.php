@@ -103,4 +103,63 @@ class PaymentReversalTest extends TestCase
         $this->assertDatabaseCount('payment_reversals', 0);
         $this->assertDatabaseCount('keuangans', 1);
     }
+
+    public function test_reversed_manual_income_cannot_be_unlinked_and_remains_balanced(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        $payment = $this->approvedPayment();
+        $income = $payment->ledgerEntry;
+        // Reproduce a reconciled legacy income using the real attach endpoint.
+        $income->update(['payment_id' => null]);
+        $this->post('/keuangans/reconciliation/'.$payment->id.'/ledger-link', [
+            'keuangan_id' => $income->id, 'reason' => 'Rekonsiliasi pemasukan sintetis',
+        ])->assertRedirect();
+        $this->post('/pembayarans/'.$payment->id.'/reverse', [
+            'reversal_date' => '2026-10-09', 'reason' => 'Pengembalian sintetis penuh',
+        ])->assertRedirect();
+        $response = $this->deleteJson('/keuangans/reconciliation/'.$payment->id.'/ledger-link', [
+            'reason' => 'Coba lepas sumber yang sudah dibalik',
+        ]);
+        $this->assertSame($payment->id, $income->fresh()->payment_id);
+        $response->assertUnprocessable()->assertJsonValidationErrors('keuangan');
+        $this->assertDatabaseCount('finance_payment_link_audits', 1);
+        $this->assertDatabaseCount('payment_reversals', 1);
+        $this->assertDatabaseCount('keuangans', 2);
+        $this->get('/keuangans/'.$income->id)->assertOk()->assertSee('Pemasukan asal pembalikan')->assertDontSee('Lepas tautan dengan audit');
+        $this->get('/laporan-keuangan?bulan=2026-10')->assertOk()->assertViewHas('saldo', fn ($saldo) => (float) $saldo === 0.0);
+    }
+
+    public function test_detached_legacy_reversal_source_cannot_be_mutated_or_reused(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $payment = $this->approvedPayment();
+        $income = $payment->ledgerEntry;
+        $this->post('/pembayarans/'.$payment->id.'/reverse', ['reversal_date' => '2026-10-09', 'reason' => 'Pembalikan sintetis'])->assertRedirect();
+        // Historical shape reachable before the fix; do not repair/reassign it automatically.
+        $income->update(['payment_id' => null, 'manually_linked_at' => null, 'manually_linked_by' => null]);
+        $response = $this->putJson('/keuangans/'.$income->id, [
+            'tanggal' => '2026-10-09', 'jenis' => 'pemasukan', 'kategori' => 'Sewa Kamar', 'deskripsi' => 'Ubah sumber', 'jumlah' => 1,
+        ]);
+        $this->assertSame('550000.25', $income->fresh()->jumlah);
+        $response->assertUnprocessable()->assertJsonValidationErrors('keuangan');
+        $this->deleteJson('/keuangans/'.$income->id)->assertUnprocessable()->assertJsonValidationErrors('keuangan');
+        $this->get('/keuangans/'.$income->id.'/edit')->assertRedirect();
+        $this->get('/keuangans/'.$income->id)->assertOk()->assertSee('Pemasukan asal pembalikan')->assertDontSee('Edit transaksi');
+        $other = Pembayaran::create(['sewa_id' => $payment->sewa_id, 'periode' => '2026-11-01', 'tanggal_bayar' => '2026-10-09', 'jumlah' => 550000.25, 'metode' => 'cash', 'status' => 'lunas']);
+        $this->postJson('/keuangans/reconciliation/'.$other->id.'/ledger-link', [
+            'keuangan_id' => $income->id, 'reason' => 'Coba pakai sumber pembalikan lama',
+        ])->assertUnprocessable()->assertJsonValidationErrors('keuangan_id');
+        $this->assertSame('550000.25', $income->fresh()->jumlah);
+        $this->assertNull($income->fresh()->payment_id);
+        $this->get('/keuangans')->assertOk()->assertDontSee('/keuangans/'.$income->id.'/edit', false)
+            ->assertDontSee('action="'.url('/keuangans/'.$income->id).'"', false);
+        $this->get('/keuangans/reconciliation')->assertOk()
+            ->assertViewHas('candidates', fn ($rows) => ! $rows->flatten()->pluck('id')->contains($income->id));
+        $rows = array_map('str_getcsv', explode("\n", trim($this->get('/keuangans/export?bulan=2026-10')->assertOk()->streamedContent())));
+        $sourceRow = collect($rows)->first(fn ($row) => ($row[0] ?? '') === (string) $income->id);
+        $this->assertSame('asal pembalikan', $sourceRow[6]);
+        $this->assertDatabaseCount('payment_reversals', 1);
+        $this->assertDatabaseCount('keuangans', 2);
+    }
 }
