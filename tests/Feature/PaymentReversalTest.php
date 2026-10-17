@@ -83,15 +83,22 @@ class PaymentReversalTest extends TestCase
     {
         $this->actingAs(User::factory()->create());
         $payment = $this->approvedPayment();
+        $income = $payment->ledgerEntry;
+        $history = [$payment->getAttributes(), $payment->invoice->getAttributes(), $income->getAttributes()];
         DB::statement("CREATE TRIGGER fail_reversal BEFORE INSERT ON payment_reversals BEGIN SELECT RAISE(ABORT, 'synthetic'); END");
         $payload = ['reversal_date' => '2026-10-09', 'reason' => 'Pengembalian penuh'];
         $this->postJson('/pembayarans/'.$payment->id.'/reverse', $payload)->assertStatus(500);
         $this->assertDatabaseCount('payment_reversals', 0);
         $this->assertDatabaseCount('keuangans', 1);
+        $this->assertSame(0, DB::transactionLevel());
+        $this->assertSame($history, [$payment->fresh()->getAttributes(), $payment->fresh()->invoice->getAttributes(), $income->fresh()->getAttributes()]);
+        $this->assertDatabaseCount('finance_payment_link_audits', 0);
         DB::statement('DROP TRIGGER fail_reversal');
+        $this->post('/pembayarans/'.$payment->id.'/reverse', $payload)->assertRedirect();
         $this->post('/pembayarans/'.$payment->id.'/reverse', $payload)->assertRedirect();
         $this->assertDatabaseCount('payment_reversals', 1);
         $this->assertDatabaseCount('keuangans', 2);
+        $this->assertSame($history, [$payment->fresh()->getAttributes(), $payment->fresh()->invoice->getAttributes(), $income->fresh()->getAttributes()]);
     }
 
     public function test_reversal_requires_payment_update_permission(): void

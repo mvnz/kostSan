@@ -409,6 +409,45 @@ try {
     check($history === [$recoverable->fresh()->getAttributes(), $recoverable->fresh()->invoice->getAttributes()], 'Recovery mutated payment/invoice history.');
     check(FinancePaymentLinkAudit::where('payment_id', $recoverable->id)->orderBy('id')->pluck('action')->all() === ['linked', 'unlinked', 'linked'], 'Recovery did not preserve audit sequence.');
     echo "PASS unlink-first/reversal race: missing source rejected without writes, reconciliation/retry one offset 845000.75 and net zero\n";
+
+    $rollbackPayment = Pembayaran::create(['sewa_id' => $lease->id, 'periode' => '2026-10-01', 'tanggal_bayar' => now()->toDateString(), 'jumlah' => 956000.25, 'metode' => 'cash', 'status' => 'belum_lunas']);
+    operate('approve', $rollbackPayment->id, 0);
+    $rollbackIncome = Keuangan::where('payment_id', $rollbackPayment->id)->sole();
+    $history = [$rollbackPayment->fresh()->getAttributes(), $rollbackPayment->fresh()->invoice->getAttributes(), $rollbackIncome->getAttributes()];
+    $entryCount = Keuangan::count();
+    $reversalCount = PaymentReversal::count();
+    $auditCount = FinancePaymentLinkAudit::count();
+    $offsetInserted = false;
+    Keuangan::created(function (Keuangan $entry) use (&$offsetInserted): void {
+        if ($entry->kategori === 'Pembalikan Pembayaran' && (string) $entry->jumlah === '956000.25') {
+            $offsetInserted = true;
+        }
+    });
+    $probe = operatorRequest('/pembayarans/'.$rollbackPayment->id.'/reverse', 'POST', [
+        'reversal_date' => now()->toDateString(), 'reason' => 'Synthetic rollback probe',
+    ], $operator->id);
+    // Test-only constraint rejects the second write, not the preceding offset insert.
+    DB::statement("ALTER TABLE payment_reversals ADD CONSTRAINT synthetic_reversal_failure CHECK (reason <> 'Synthetic rollback probe')");
+    try {
+        app(PembayaranController::class)->reverse($probe, $rollbackPayment->fresh());
+        throw new RuntimeException('Expected reversal write failure was not raised.');
+    } catch (Illuminate\Database\QueryException $exception) {
+        check(str_contains($exception->getMessage(), 'synthetic_reversal_failure'), 'Unexpected reversal DB failure.');
+        check($offsetInserted, 'Failure occurred before an offset was actually inserted.');
+        check(DB::transactionLevel() === 0 && ! DB::connection()->getPdo()->inTransaction(), 'Failed reversal left an open transaction.');
+        check(Keuangan::count() === $entryCount && PaymentReversal::count() === $reversalCount, 'Failed reversal left an orphan offset/reversal.');
+        check(FinancePaymentLinkAudit::count() === $auditCount, 'Failed reversal mutated link audits.');
+        check($history === [$rollbackPayment->fresh()->getAttributes(), $rollbackPayment->fresh()->invoice->getAttributes(), $rollbackIncome->fresh()->getAttributes()], 'Failed reversal mutated original history.');
+    } finally {
+        DB::statement('ALTER TABLE payment_reversals DROP CHECK synthetic_reversal_failure');
+    }
+    app(PembayaranController::class)->reverse($probe, $rollbackPayment->fresh());
+    app(PembayaranController::class)->reverse($probe, $rollbackPayment->fresh());
+    check(Keuangan::count() === $entryCount + 1 && PaymentReversal::count() === $reversalCount + 1, 'Rollback recovery/retry created duplicate/orphan entries.');
+    checkBalancedReversal($rollbackPayment, $rollbackIncome, '956000.25');
+    check($history === [$rollbackPayment->fresh()->getAttributes(), $rollbackPayment->fresh()->invoice->getAttributes(), $rollbackIncome->fresh()->getAttributes()], 'Recovered reversal mutated original history.');
+    check(FinancePaymentLinkAudit::count() === $auditCount, 'Recovery mutated link audits.');
+    echo "PASS late reversal write rollback: offset insert observed, no orphan/history/audit changes, retry one offset/reversal 956000.25 and net zero\n";
 } catch (Throwable $exception) {
     fwrite(STDERR, get_class($exception).': '.$exception->getMessage()."\n");
     exit(1);
