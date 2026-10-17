@@ -162,4 +162,33 @@ class PaymentReversalTest extends TestCase
         $this->assertDatabaseCount('payment_reversals', 1);
         $this->assertDatabaseCount('keuangans', 2);
     }
+
+    public function test_unlinked_income_blocks_reversal_until_operator_reconciles_and_retries(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $payment = $this->approvedPayment();
+        $income = $payment->ledgerEntry;
+        $income->update(['payment_id' => null]);
+        $attach = ['keuangan_id' => $income->id, 'reason' => 'Cocokkan mutasi sintetis dan bukti transfer'];
+        $this->post('/keuangans/reconciliation/'.$payment->id.'/ledger-link', $attach)->assertRedirect();
+        $this->delete('/keuangans/reconciliation/'.$payment->id.'/ledger-link', ['reason' => 'Periksa ulang pilihan sumber sebelum pembalikan'])->assertRedirect();
+        $payload = ['reversal_date' => '2026-10-09', 'reason' => 'Pengembalian penuh setelah rekonsiliasi'];
+        $this->postJson('/pembayarans/'.$payment->id.'/reverse', $payload)->assertUnprocessable()
+            ->assertJsonValidationErrors('pembayaran')->assertJsonPath('errors.pembayaran.0', 'Pemasukan asal tidak ditemukan. Selesaikan rekonsiliasi sebelum membuat pembalikan.');
+        $this->assertDatabaseCount('payment_reversals', 0);
+        $this->assertDatabaseCount('keuangans', 1);
+        $this->assertDatabaseCount('finance_payment_link_audits', 2);
+        $this->assertSame('550000.25', $income->fresh()->jumlah);
+        $this->assertSame('lunas', $payment->fresh()->status);
+        $this->assertSame('lunas', $payment->fresh()->invoice->status);
+        $this->post('/keuangans/reconciliation/'.$payment->id.'/ledger-link', $attach)->assertRedirect();
+        $this->post('/pembayarans/'.$payment->id.'/reverse', $payload)->assertRedirect();
+        $this->post('/pembayarans/'.$payment->id.'/reverse', $payload)->assertRedirect();
+        $this->assertDatabaseCount('payment_reversals', 1);
+        $this->assertDatabaseCount('keuangans', 2);
+        $this->assertDatabaseCount('finance_payment_link_audits', 3);
+        $this->assertSame($payment->id, $income->fresh()->payment_id);
+        $this->assertSame('550000.25', $payment->fresh()->reversal->reversalEntry->jumlah);
+        $this->get('/laporan-keuangan?bulan=2026-10')->assertOk()->assertViewHas('saldo', fn ($saldo) => (float) $saldo === 0.0);
+    }
 }

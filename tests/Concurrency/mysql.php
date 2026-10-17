@@ -67,6 +67,19 @@ function operatorRequest(string $uri, string $method, array $payload, int $opera
     return $request;
 }
 
+function checkBalancedReversal(Pembayaran $payment, Keuangan $income, string $amount): void
+{
+    $reversal = PaymentReversal::where('payment_id', $payment->id)->sole();
+    $offset = $reversal->reversalEntry;
+    check($income->fresh()->payment_id === $payment->id && $reversal->original_entry_id === $income->id, 'Reversal source identity changed.');
+    check((string) $income->fresh()->jumlah === $amount && (string) $offset->jumlah === $amount, 'Reversal decimal amounts changed.');
+    check($offset->jenis === 'pengeluaran' && $offset->kategori === 'Pembalikan Pembayaran' && $offset->payment_id === null, 'Offset classification/source incorrect.');
+    $balance = Keuangan::whereIn('id', [$income->id, $offset->id])->selectRaw("SUM(CASE WHEN jenis = 'pemasukan' THEN jumlah ELSE -jumlah END) AS balance")->first();
+    check((string) $balance->balance === '0.00', 'Reversal is not net zero.');
+    $invoice = Invoice::where('payment_id', $payment->id)->sole();
+    check($payment->fresh()->status === 'lunas' && $invoice->status === 'lunas' && (string) $invoice->jumlah_tagihan === $amount, 'Payment/invoice history inconsistent.');
+}
+
 // Invoke the real controller in independent PHP/DB sessions, not a copy of its transaction.
 function operate(string $operation, int $id, int $resident): void
 {
@@ -344,6 +357,58 @@ try {
     check((string) $balance->balance === '0.00', 'Reconciled reversal is not net zero.');
     check($reconciled->fresh()->status === 'lunas' && Invoice::where('payment_id', $reconciled->id)->value('status') === 'lunas', 'Reversal changed payment/invoice history.');
     echo "PASS reverse/unlink race: source link and audit preserved, one reversal, income/offset 550000.25 and net zero\n";
+
+    $parallel = Pembayaran::create(['sewa_id' => $lease->id, 'periode' => '2026-10-01', 'tanggal_bayar' => now()->toDateString(), 'jumlah' => 735000.25, 'metode' => 'cash', 'status' => 'belum_lunas']);
+    operate('approve', $parallel->id, 0);
+    $parallelIncome = Keuangan::where('payment_id', $parallel->id)->sole();
+    $history = [$parallel->fresh()->getAttributes(), $parallel->fresh()->invoice->getAttributes(), $parallelIncome->getAttributes()];
+    $entryCount = Keuangan::count();
+    $results = race('reverse', 'pembayarans', $parallel->id, $parallel->id, [$operator->id, $operator->id]);
+    check(array_column($results, 'result') === ['ok', 'ok'], 'Simultaneous reversal/retry did not both complete.');
+    check(Keuangan::count() === $entryCount + 1, 'Concurrent reversal created duplicate/orphan offsets.');
+    checkBalancedReversal($parallel, $parallelIncome, '735000.25');
+    check($history === [$parallel->fresh()->getAttributes(), $parallel->fresh()->invoice->getAttributes(), $parallelIncome->fresh()->getAttributes()], 'Concurrent reversal mutated original history.');
+    echo "PASS concurrent reversal creation: two blocked workers, one offset/reversal 735000.25, original history unchanged and net zero\n";
+
+    $recoverable = Pembayaran::create(['sewa_id' => $lease->id, 'periode' => '2026-10-01', 'tanggal_bayar' => now()->toDateString(), 'jumlah' => 845000.75, 'metode' => 'cash', 'status' => 'lunas']);
+    $recoverableIncome = Keuangan::create(['tanggal' => now()->toDateString(), 'jenis' => 'pemasukan', 'kategori' => 'Sewa Kamar', 'deskripsi' => 'Synthetic recoverable manual income', 'jumlah' => 845000.75]);
+    $attach = operatorRequest('/keuangans/reconciliation/'.$recoverable->id.'/ledger-link', 'POST', [
+        'keuangan_id' => $recoverableIncome->id, 'reason' => 'Synthetic verified source for recovery',
+    ], $operator->id);
+    app(KeuanganController::class)->attachManualIncome($attach, $recoverable);
+    $history = [$recoverable->fresh()->getAttributes(), $recoverable->fresh()->invoice->getAttributes()];
+    $entryCount = Keuangan::count();
+    $worker = new Process([PHP_BINARY, __FILE__, 'worker', 'reverse', (string) $recoverable->id, (string) $operator->id], $root);
+    $worker->setTimeout(25);
+    DB::beginTransaction();
+    try {
+        Pembayaran::whereKey($recoverable->id)->lockForUpdate()->firstOrFail();
+        $worker->start();
+        waitForLocks([$worker], 'pembayarans');
+        echo "CONTENTION unlink/reverse: reversal blocked before unlink commits first\n";
+        operate('detach', $recoverable->id, $operator->id);
+        DB::commit();
+        check($worker->wait() === 0, 'Waiting reversal worker failed: '.$worker->getErrorOutput());
+        check(json_decode(trim($worker->getOutput()), true, flags: JSON_THROW_ON_ERROR) === ['result' => 'validation', 'fields' => ['pembayaran']], 'Reversal accepted an unlinked source.');
+    } finally {
+        if (DB::transactionLevel() > 0) {
+            DB::rollBack();
+        }
+        if ($worker->isRunning()) {
+            $worker->stop(1);
+        }
+    }
+    check(! PaymentReversal::where('payment_id', $recoverable->id)->exists() && Keuangan::count() === $entryCount, 'Rejected reversal left an offset/reversal.');
+    check($recoverableIncome->fresh()->payment_id === null && (string) $recoverableIncome->fresh()->jumlah === '845000.75', 'Unlink changed income amount or failed.');
+    check(FinancePaymentLinkAudit::where('payment_id', $recoverable->id)->orderBy('id')->pluck('action')->all() === ['linked', 'unlinked'], 'Rejected reversal changed link audit history.');
+    app(KeuanganController::class)->attachManualIncome($attach, $recoverable->fresh());
+    operate('reverse', $recoverable->id, $operator->id);
+    operate('reverse', $recoverable->id, $operator->id);
+    check(Keuangan::count() === $entryCount + 1, 'Recovery/retry created duplicate/orphan offsets.');
+    checkBalancedReversal($recoverable, $recoverableIncome, '845000.75');
+    check($history === [$recoverable->fresh()->getAttributes(), $recoverable->fresh()->invoice->getAttributes()], 'Recovery mutated payment/invoice history.');
+    check(FinancePaymentLinkAudit::where('payment_id', $recoverable->id)->orderBy('id')->pluck('action')->all() === ['linked', 'unlinked', 'linked'], 'Recovery did not preserve audit sequence.');
+    echo "PASS unlink-first/reversal race: missing source rejected without writes, reconciliation/retry one offset 845000.75 and net zero\n";
 } catch (Throwable $exception) {
     fwrite(STDERR, get_class($exception).': '.$exception->getMessage()."\n");
     exit(1);
