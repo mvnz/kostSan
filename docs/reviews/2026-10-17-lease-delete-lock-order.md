@@ -19,3 +19,19 @@ Self-review eksplisit: urutan lock konsisten dengan checkout/perpanjangan/approv
 UAT manusia belum tersedia: pada staging sintetis, admin mulai penyelesaian dan operator lain hapus sewa tanpa histori yang sama; periksa hasil serial, kamar tersedia, tidak ada error database. Untuk perubahan kamar di tengah request hapus, periksa pesan muat ulang, sewa/bukti tetap, periksa penghuni/kamar terbaru sebelum retry. Viewer harus ditolak menghapus; sewa dengan pembayaran/reservasi tidak boleh hilang. Jalankan ulang dengan engine/isolation/storage deployment sebenarnya sebelum operasional.
 
 Perintah: `. ../php-env.sh; PAO_DISABLE=1 php vendor/bin/phpunit --fail-on-warning --fail-on-risky`, `npm test`, `npm run build`, `php artisan kost:check-ui --no-interaction`, `php ../composer.phar audit --locked`, `npm audit --audit-level=low`. MySQL hanya lewat target guard CI pada `.github/workflows/tests.yml`; browser nyata `npm run test:browser` di CI. Hasil hijau MySQL/browser dan SHA akhir dicatat sesudah verifikasi, bukan disimpulkan dari tes lokal.
+
+## Hasil terverifikasi
+
+Source fix `ad6b3b942c82326e78e98422a3fff149329b446d`, tree `33ab9b2a967bf48ccb841b11b96b78d84a665ff8`, sama dengan tree pull/10/merge dan di-fetch ulang sebelum retest lokal. [CI39039159462](https://github.com/mvnz/kostSan/actions/runs/39039159462) ketiga job sukses. MySQL8.4.11/REPEATABLE-READ mencatat `PASS delete/checkout serialization`: checkout selesai kemudian sewa tanpa histori terhapus/kamar tersedia. Reproduksi merah40001/1213 menjadi hijau tanpa mengubah tes. Delapan race lama serta rollback approval/reversal tetap lulus;43 migrasi full up/down/up. Backend202/1498, frontend11/build/UI/audit/routes/views, Chromium12/12 lulus. Test stale deletion1/16 serta suite202/1498 diulang pada source publikasi. Scan pola private key/GitHub/AWS token pada tracked source tanpa kecocokan (exit1), bukan audit secret menyeluruh.
+
+| Kategori | Status | Bukti dan batas |
+|---|---|---|
+| Functional | LULUS | Hapus fresh berhasil; request usang ditolak dengan instruksi muat ulang, sewa/bukti/status kamar tetap; histori pembayaran/reservasi tetap dilindungi. |
+| User flow & transaction | LULUS | Dua koneksi/controller asli MySQL, barrier kamar teramati, checkout/delete serial tanpa deadlock; delapan race dan rollback lama lulus. Bukan semua interleaving/config deployment. |
+| Responsive | LULUS | Chromium12/12 pada ponsel/tablet/desktop: navigasi/form/tabel/overflow dan pemulihan input. Tidak ada perubahan UI baru; bukan seluruh dialog/perangkat. |
+| Bug & regression | LULUS | Reproduksi merah stale deletion dan MySQL1213 sebelum fix; suite202/1498, frontend11, build dan43 migrasi sesudah fix. |
+| Retest | LULUS | Tes stale deletion1/16 diulang pada SHA fix publikasi, seluruh suite dan CI MySQL/browser hijau; assertion tidak dilonggarkan. |
+| User testing | BELUM DIUJI | Simulasi agen admin/viewer/guest serta HTTP lulus; UAT manusia belum dilakukan. Skenario staging di atas, tanpa menghubungi penghuni. |
+| Security | LULUS | Scope suite auth/role/403/CSRF419/input/XSS/unggahan/dokumen/link, audit dependency, target guards tetap lulus. Bukan pentest atau verifikasi akun/storage produksi. |
+
+[PR #10](https://github.com/mvnz/kostSan/pull/10) terpisah, basis draft #9; belum merge ke main. Commit penutup hanya checkpoint ini; SHA/tree/CI final dicatat pada PR setelah verifikasi ulang. Kesiapan operasional penuh belum dapat dinyatakan. Prioritas berikut: validasi race update sewa yang memakai kamar binding sebelum fresh lock (dugaan belum direproduksi, jangan klaim sudah diperbaiki), staging engine/isolation/storage sebenarnya, rekonsiliasi historis, UAT manusia. Tidak menumpuk fitur baru pada PR ini atau mengulang race pembalikan sebagai fitur baru.
