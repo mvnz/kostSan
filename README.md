@@ -145,6 +145,8 @@ Data sewa yang sudah memiliki riwayat pembayaran tidak dapat dihapus. Tombol hap
 
 Penghapusan sewa mengunci kamar sebelum sewa agar sejalan dengan penyelesaian/perpanjangan kamar. Jika kamar berubah saat request penghapusan berlangsung, aksi ditolak tanpa menghapus sewa atau bukti; muat ulang **Data Sewa**, periksa kamar/penghuni terbaru, lalu hapus hanya bila masih dimaksudkan. Ini bukan deteksi semua perubahan form lama; histori pembayaran/reservasi tetap tidak boleh dihapus.
 
+Update sewa juga ditolak bila kamar aktual sudah berubah ke kamar di luar lock request tersebut. Muat ulang **Data Sewa**, periksa kamar/penghuni/periode dan nominal terbaru, lalu ulangi perubahan yang masih diperlukan. Bukti lama tetap disimpan dan unggahan pengganti belum ditulis saat penolakan ini. Perpindahan kamar tetap tersedia; bila kamar aktual sudah sama dengan tujuan yang terkunci, update tetap dapat dilanjutkan. Guard ini bukan versioning seluruh isi form.
+
 Detail Sewa dapat dibuka oleh operator dengan hak **Lihat Data Sewa** untuk menelusuri bukti melalui endpoint privat. Tombol Edit/Hapus hanya dirender bila hak terkait tersedia; request mutasi langsung tetap ditolak middleware. Pengguna tanpa hak lihat tidak dapat membuka detail maupun file bukti.
 
 Menu Penghuni juga memiliki halaman detail read-only terpisah dari form edit. Operator dengan hak **Lihat Data Penghuni** dapat memeriksa identitas, kontak darurat, kendaraan, ringkasan relasi, foto KTP, dan selfie privat tanpa memperoleh aksi mutasi. Halaman sensitif memakai `no-store`; output teks di-escape dan file tetap dilayani lewat pemeriksaan izin.

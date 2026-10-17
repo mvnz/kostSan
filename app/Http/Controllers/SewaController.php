@@ -197,6 +197,9 @@ class SewaController extends Controller
             DB::transaction(function () use ($validated, $request, $sewa, &$replacement): void {
                 $rooms = Kamar::whereIn('id', [$sewa->kamar_id, $validated['kamar_id']])->orderBy('id')->lockForUpdate()->get();
                 $sewa = Sewa::whereKey($sewa->id)->lockForUpdate()->firstOrFail();
+                if (! $rooms->contains('id', $sewa->kamar_id)) {
+                    throw ValidationException::withMessages(['sewa' => 'Kamar sewa telah berubah. Muat ulang Data Sewa sebelum memperbarui.']);
+                }
                 $kamar = $rooms->firstWhere('id', $validated['kamar_id']);
                 abort_unless($kamar, 404);
                 if ($validated['status'] !== 'selesai') {
