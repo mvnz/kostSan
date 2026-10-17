@@ -35,6 +35,7 @@ use App\Http\Controllers\PembayaranController;
 use App\Http\Controllers\ReservasiController;
 use App\Http\Controllers\SewaController;
 use App\Http\Controllers\KeuanganController;
+use App\Http\Controllers\KamarController;
 use App\Models\Invoice;
 use App\Models\Kamar;
 use App\Models\Keuangan;
@@ -102,6 +103,8 @@ function operate(string $operation, int $id, int $resident): void
         app(KeuanganController::class)->detachManualIncome(operatorRequest('/keuangans/reconciliation/'.$id.'/ledger-link', 'DELETE', [
             'reason' => 'Synthetic concurrent unlink attempt',
         ], $resident), Pembayaran::findOrFail($id));
+    } elseif ($operation === 'delete-lease') {
+        app(SewaController::class)->destroy(Sewa::findOrFail($id));
     } else {
         throw new RuntimeException('Unknown worker operation.');
     }
@@ -448,6 +451,46 @@ try {
     check($history === [$rollbackPayment->fresh()->getAttributes(), $rollbackPayment->fresh()->invoice->getAttributes(), $rollbackIncome->fresh()->getAttributes()], 'Recovered reversal mutated original history.');
     check(FinancePaymentLinkAudit::count() === $auditCount, 'Recovery mutated link audits.');
     echo "PASS late reversal write rollback: offset insert observed, no orphan/history/audit changes, retry one offset/reversal 956000.25 and net zero\n";
+
+    $deleteRoom = Kamar::create(['nomor' => 'MYSQL-DELETE', 'tipe' => 'Test', 'harga_bulanan' => 550000, 'status' => 'terisi']);
+    $deleteLease = Sewa::create(['kamar_id' => $deleteRoom->id, 'penghuni_id' => $resident->id, 'tanggal_masuk' => '2026-10-01', 'tanggal_keluar' => '2026-11-01', 'biaya_bulanan' => 550000, 'status' => 'aktif']);
+    $worker = new Process([PHP_BINARY, __FILE__, 'worker', 'delete-lease', (string) $deleteLease->id, '0'], $root);
+    $worker->setTimeout(25);
+    DB::beginTransaction();
+    try {
+        Kamar::whereKey($deleteRoom->id)->lockForUpdate()->firstOrFail();
+        $worker->start();
+        $deadline = microtime(true) + 15;
+        do {
+            $worker->checkTimeout();
+            check($worker->isRunning(), 'Delete exited before room contention: '.$worker->getErrorOutput().$worker->getOutput());
+            // Old code waits at UPDATE; corrected code waits at SELECT FOR UPDATE.
+            $waiting = array_filter(DB::select('SHOW FULL PROCESSLIST'), fn ($thread) =>
+                $thread->db === 'kostsan_concurrency_test'
+                && preg_match('/^(update `kamars`|select .*`kamars`.*for update)/i', (string) $thread->Info));
+            if (count($waiting) === 1) {
+                break;
+            }
+            usleep(20000);
+        } while (microtime(true) < $deadline);
+        check(count($waiting) === 1, 'Delete never reached the room lock barrier.');
+        echo "CONTENTION delete/checkout: delete blocked on held room before actual checkout\n";
+        app(KamarController::class)->selesaiSewa($deleteRoom->fresh());
+        check(Sewa::findOrFail($deleteLease->id)->status === 'selesai', 'Checkout did not finish the lease.');
+        DB::commit();
+        check($worker->wait() === 0, 'Delete/checkout worker failed: '.$worker->getErrorOutput().$worker->getOutput());
+        check(json_decode(trim($worker->getOutput()), true, flags: JSON_THROW_ON_ERROR) === ['result' => 'ok'], 'Delete did not complete after checkout.');
+        check(! Sewa::whereKey($deleteLease->id)->exists() && $deleteRoom->fresh()->status === 'tersedia', 'Delete/checkout final state inconsistent.');
+        check(! Pembayaran::where('sewa_id', $deleteLease->id)->exists(), 'Unexpected payment in deletion fixture.');
+        echo "PASS delete/checkout serialization: completed checkout, deleted history-free lease, room available\n";
+    } finally {
+        if (DB::transactionLevel() > 0) {
+            DB::rollBack();
+        }
+        if ($worker->isRunning()) {
+            $worker->stop(1);
+        }
+    }
 } catch (Throwable $exception) {
     fwrite(STDERR, get_class($exception).': '.$exception->getMessage()."\n");
     exit(1);
