@@ -281,7 +281,18 @@ class PembayaranController extends Controller
             if ($payment->status === 'lunas') {
                 return false;
             }
+            // A pending legacy bill can move while this request waits for the room lock.
+            if ((int) $payment->sewa_id !== (int) $pembayaran->sewa_id) {
+                throw ValidationException::withMessages([
+                    'pembayaran' => 'Sumber tagihan berubah saat diproses. Muat ulang detail pembayaran, periksa sewa dan nominal, lalu coba approval kembali.',
+                ]);
+            }
             $sewa = Sewa::whereKey($payment->sewa_id)->lockForUpdate()->firstOrFail();
+            if ((int) $sewa->kamar_id !== (int) $kamar->id) {
+                throw ValidationException::withMessages([
+                    'pembayaran' => 'Kamar sewa berubah saat diproses. Muat ulang detail pembayaran, periksa kamar dan sewa, lalu coba approval kembali.',
+                ]);
+            }
             if ($sewa->status !== 'selesai') {
                 app(RoomAvailability::class)->assertAvailable($kamar, $sewa->tanggal_masuk->toDateString(), $sewa->tanggal_keluar?->toDateString(), exceptLease: $sewa->id, resident: $sewa->penghuni_id);
                 $sewa->update(['status' => 'aktif']);
