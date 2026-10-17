@@ -231,7 +231,12 @@ class SewaController extends Controller
     public function destroy(Sewa $sewa)
     {
         $deleted = DB::transaction(function () use ($sewa): bool {
+            // Match checkout/extension/approval: room before lease, never the reverse.
+            $kamar = Kamar::whereKey($sewa->kamar_id)->lockForUpdate()->firstOrFail();
             $sewa = Sewa::whereKey($sewa->id)->lockForUpdate()->firstOrFail();
+            if ($sewa->kamar_id !== $kamar->id) {
+                throw ValidationException::withMessages(['sewa' => 'Kamar sewa telah berubah. Muat ulang Data Sewa sebelum menghapus.']);
+            }
             if ($sewa->pembayarans()->exists() || $sewa->convertedReservation()->exists()) {
                 return false;
             }

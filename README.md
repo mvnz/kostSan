@@ -143,6 +143,8 @@ Bukti pada Data Sewa mengikuti jaminan yang sama: create/update ditolak bila sto
 
 Data sewa yang sudah memiliki riwayat pembayaran tidak dapat dihapus. Tombol hapus diganti penanda riwayat pada daftar/detail, endpoint memeriksa ulang di dalam transaksi dengan row lock, dan foreign key payment→sewa memakai `RESTRICT` sebagai pertahanan database. Perlindungan ini mencegah cascade menghilangkan pembayaran, invoice, pemasukan, link, serta bukti transaksi; gunakan status selesai dan pembalikan pembayaran untuk koreksi yang perlu mempertahankan audit.
 
+Penghapusan sewa mengunci kamar sebelum sewa agar sejalan dengan penyelesaian/perpanjangan kamar. Jika kamar berubah saat request penghapusan berlangsung, aksi ditolak tanpa menghapus sewa atau bukti; muat ulang **Data Sewa**, periksa kamar/penghuni terbaru, lalu hapus hanya bila masih dimaksudkan. Ini bukan deteksi semua perubahan form lama; histori pembayaran/reservasi tetap tidak boleh dihapus.
+
 Detail Sewa dapat dibuka oleh operator dengan hak **Lihat Data Sewa** untuk menelusuri bukti melalui endpoint privat. Tombol Edit/Hapus hanya dirender bila hak terkait tersedia; request mutasi langsung tetap ditolak middleware. Pengguna tanpa hak lihat tidak dapat membuka detail maupun file bukti.
 
 Menu Penghuni juga memiliki halaman detail read-only terpisah dari form edit. Operator dengan hak **Lihat Data Penghuni** dapat memeriksa identitas, kontak darurat, kendaraan, ringkasan relasi, foto KTP, dan selfie privat tanpa memperoleh aksi mutasi. Halaman sensitif memakai `no-store`; output teks di-escape dan file tetap dilayani lewat pemeriksaan izin.
