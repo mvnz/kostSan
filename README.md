@@ -34,6 +34,7 @@ Sesuaikan `.env` dengan database masing-masing. Jangan menjalankan migrasi atau 
 - Membuat/mengedit sewa, pendaftaran publik, approval, dan perpanjangan tidak boleh menutup sewa penghuni lain. Kamar perbaikan tidak menerima sewa baru. Master Kamar tidak boleh mengosongkan kamar yang masih memiliki sewa; gunakan tindakan Selesai Sewa.
 - Perpanjangan memerlukan tepat satu sewa aktif dan tanggal akhir yang lebih maju, dengan pengecekan reservasi lain.
 - Approval pembayaran dapat diulang tanpa mengirim notifikasi kedua atau membuka kembali sewa yang selesai. Notifikasi dijalankan setelah transaksi database selesai.
+- Bila request approval sedang berjalan sementara operator lain memindahkan tagihan legacy pending ke sewa lain, approval lama ditolak dengan pesan **Sumber tagihan berubah**. Muat ulang Detail Pembayaran, periksa sewa/penghuni/nominal yang terbaru, lalu setujui kembali jika benar. Penolakan tidak melunasi invoice, menulis ledger, atau mengubah kamar sumber lama; ini tidak menggantikan pemeriksaan seluruh perubahan form/nominal dengan versioning.
 - Pendaftaran menghitung bulan kalender tanpa melewati akhir bulan. Contoh 31 Januari + 3 bulan menjadi 30 April, dengan tagihan 3 bulan. Periode pecahan dan tanggal historis yang tidak tepat bulan kalender mempertahankan hitungan lama (minimal 1 bulan); belum tersedia prorata harian. Harga tier dan pembulatan nominal Rp50.000 dari konfigurasi lama tetap digunakan.
 
 ## Ekspor pembayaran untuk rekonsiliasi

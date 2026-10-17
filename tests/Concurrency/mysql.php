@@ -73,6 +73,26 @@ function operate(string $operation, int $id, int $resident): void
     }
 }
 
+function waitForLocks(array $workers, string $table): void
+{
+    $deadline = microtime(true) + 15;
+    do {
+        foreach ($workers as $worker) {
+            $worker->checkTimeout();
+            check($worker->isRunning(), 'Worker exited before lock contention: '.$worker->getErrorOutput().$worker->getOutput());
+        }
+        $waiting = array_filter(DB::select('SHOW FULL PROCESSLIST'), fn ($thread) =>
+            $thread->db === 'kostsan_concurrency_test'
+            && str_contains(strtolower((string) $thread->Info), 'for update')
+            && str_contains((string) $thread->Info, '`'.$table.'`'));
+        if (count($waiting) === count($workers)) {
+            return;
+        }
+        usleep(20000);
+    } while (microtime(true) < $deadline);
+    throw new RuntimeException('Did not observe all simultaneous blocked row-lock queries.');
+}
+
 function race(string $operation, string $table, int $lockId, int $targetId, array $residents): array
 {
     $workers = [];
@@ -85,22 +105,7 @@ function race(string $operation, string $table, int $lockId, int $targetId, arra
             $process->start();
             $workers[] = $process;
         }
-        $deadline = microtime(true) + 15;
-        do {
-            foreach ($workers as $worker) {
-                $worker->checkTimeout();
-                check($worker->isRunning(), 'Worker exited before lock contention: '.$worker->getErrorOutput().$worker->getOutput());
-            }
-            $waiting = array_filter(DB::select('SHOW FULL PROCESSLIST'), fn ($thread) =>
-                $thread->db === 'kostsan_concurrency_test'
-                && str_contains(strtolower((string) $thread->Info), 'for update')
-                && str_contains((string) $thread->Info, '`'.$table.'`'));
-            if (count($waiting) === 2) {
-                break;
-            }
-            usleep(20000);
-        } while (microtime(true) < $deadline);
-        check(count($waiting) === 2, 'Did not observe two simultaneous blocked row-lock queries.');
+        waitForLocks($workers, $table);
         echo "CONTENTION {$operation}: two independent queries blocked on {$table}\n";
         DB::commit();
         $results = [];
@@ -204,6 +209,43 @@ try {
     check((string) $pending->fresh()->jumlah === '650000.00'
         && (string) Invoice::where('payment_id', $pending->id)->value('jumlah_tagihan') === '650000.00', 'Rollback changed pending amounts.');
     echo "PASS ledger failure rollback: payment/invoice pending, no income\n";
+
+    $oldRoom = Kamar::create(['nomor' => 'MYSQL-STALE-OLD', 'tipe' => 'Test', 'harga_bulanan' => 550000, 'status' => 'tersedia']);
+    $newRoom = Kamar::create(['nomor' => 'MYSQL-STALE-NEW', 'tipe' => 'Test', 'harga_bulanan' => 550000, 'status' => 'terisi']);
+    $oldLease = Sewa::create(['kamar_id' => $oldRoom->id, 'penghuni_id' => $resident->id, 'tanggal_masuk' => '2026-09-01', 'tanggal_keluar' => '2026-10-01', 'biaya_bulanan' => 550000, 'status' => 'selesai']);
+    $newLease = Sewa::create(['kamar_id' => $newRoom->id, 'penghuni_id' => $other->id, 'tanggal_masuk' => '2026-10-01', 'tanggal_keluar' => '2026-11-01', 'biaya_bulanan' => 550000, 'status' => 'aktif']);
+    $legacy = Pembayaran::create(['sewa_id' => $oldLease->id, 'periode' => '2026-09-01', 'jumlah' => 550000, 'metode' => 'cash', 'status' => 'belum_lunas']);
+    $worker = new Process([PHP_BINARY, __FILE__, 'worker', 'approve', (string) $legacy->id, '0'], $root);
+    $worker->setTimeout(25);
+    DB::beginTransaction();
+    try {
+        Kamar::whereKey($oldRoom->id)->lockForUpdate()->firstOrFail();
+        $worker->start();
+        waitForLocks([$worker], 'kamars');
+        echo "CONTENTION edit/approve: old-source approval blocked while edit commits on separate connection\n";
+        app(PembayaranController::class)->update(Request::create('/pembayarans/'.$legacy->id, 'PUT', [
+            'sewa_id' => $newLease->id, 'periode' => '2026-10-01', 'jumlah' => 650000, 'metode' => 'cash',
+        ]), $legacy);
+        DB::commit();
+        check($worker->wait() === 0, 'Stale approval worker failed: '.$worker->getErrorOutput());
+        check(json_decode(trim($worker->getOutput()), true, flags: JSON_THROW_ON_ERROR) === ['result' => 'validation', 'fields' => ['pembayaran']], 'Stale approval did not reject changed source.');
+    } finally {
+        if (DB::transactionLevel() > 0) {
+            DB::rollBack();
+        }
+        if ($worker->isRunning()) {
+            $worker->stop(1);
+        }
+    }
+    check($oldRoom->fresh()->status === 'tersedia' && $legacy->fresh()->status === 'belum_lunas', 'Stale approval changed old room or approved payment.');
+    check(Invoice::where('payment_id', $legacy->id)->value('status') === 'draft' && ! Keuangan::where('payment_id', $legacy->id)->exists(), 'Stale approval wrote paid invoice/ledger.');
+    operate('approve', $legacy->id, 0);
+    operate('approve', $legacy->id, 0);
+    check($oldRoom->fresh()->status === 'tersedia' && $newRoom->fresh()->status === 'terisi', 'Fresh retry altered the wrong room.');
+    check(Invoice::where('payment_id', $legacy->id)->count() === 1 && Invoice::where('payment_id', $legacy->id)->value('status') === 'lunas', 'Fresh retry invoice inconsistent.');
+    check((int) Invoice::where('payment_id', $legacy->id)->value('penghuni_id') === $other->id, 'Invoice belongs to old source.');
+    check(Keuangan::where('payment_id', $legacy->id)->count() === 1 && (string) Keuangan::where('payment_id', $legacy->id)->value('jumlah') === '650000.00', 'Fresh retry ledger inconsistent.');
+    echo "PASS edit/approve race: stale source rejected, old room unchanged, fresh retry one invoice/income 650000\n";
 } catch (Throwable $exception) {
     fwrite(STDERR, get_class($exception).': '.$exception->getMessage()."\n");
     exit(1);
