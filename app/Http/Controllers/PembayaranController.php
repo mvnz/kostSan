@@ -288,6 +288,11 @@ class PembayaranController extends Controller
                 ]);
             }
             $sewa = Sewa::whereKey($payment->sewa_id)->lockForUpdate()->firstOrFail();
+            if ((int) $sewa->kamar_id !== (int) $kamar->id) {
+                throw ValidationException::withMessages([
+                    'pembayaran' => 'Kamar sewa berubah saat diproses. Muat ulang detail pembayaran, periksa kamar dan sewa, lalu coba approval kembali.',
+                ]);
+            }
             if ($sewa->status !== 'selesai') {
                 app(RoomAvailability::class)->assertAvailable($kamar, $sewa->tanggal_masuk->toDateString(), $sewa->tanggal_keluar?->toDateString(), exceptLease: $sewa->id, resident: $sewa->penghuni_id);
                 $sewa->update(['status' => 'aktif']);

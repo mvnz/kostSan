@@ -16,6 +16,48 @@ class StalePaymentApprovalTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_stale_approval_after_lease_room_move_is_rejected_and_fresh_retry_recovers(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $resident = Penghuni::create(['nama' => 'Synthetic moving lease', 'telepon' => '']);
+        $oldRoom = Kamar::create(['nomor' => 'MOVE-OLD', 'tipe' => 'Test', 'harga_bulanan' => 550000, 'status' => 'terisi']);
+        $newRoom = Kamar::create(['nomor' => 'MOVE-NEW', 'tipe' => 'Test', 'harga_bulanan' => 550000, 'status' => 'tersedia']);
+        $lease = Sewa::create(['kamar_id' => $oldRoom->id, 'penghuni_id' => $resident->id, 'tanggal_masuk' => '2026-10-01', 'tanggal_keluar' => '2026-11-01', 'biaya_bulanan' => 550000, 'status' => 'aktif']);
+        $payment = Pembayaran::create(['sewa_id' => $lease->id, 'periode' => '2026-10-01', 'jumlah' => 550000, 'metode' => 'cash', 'status' => 'belum_lunas']);
+        $bound = Pembayaran::with('sewa.kamar')->findOrFail($payment->id);
+        $this->putJson('/sewas/'.$lease->id, [
+            'kamar_id' => $newRoom->id, 'penghuni_id' => $resident->id,
+            'tanggal_masuk' => '2026-10-01', 'tanggal_keluar' => '2026-11-01',
+            'biaya_bulanan' => 550000, 'status' => 'aktif',
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame('tersedia', $oldRoom->fresh()->status);
+        $this->assertSame('terisi', $newRoom->fresh()->status);
+
+        try {
+            app(PembayaranController::class)->approve($bound);
+            $this->fail('An old request approved after a room move; old room status='.$oldRoom->fresh()->status);
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('pembayaran', $exception->errors());
+            $this->assertStringContainsString('Muat ulang', $exception->errors()['pembayaran'][0]);
+        }
+        $this->assertSame('tersedia', $oldRoom->fresh()->status);
+        $this->assertSame('terisi', $newRoom->fresh()->status);
+        $this->assertDatabaseHas('sewas', ['id' => $lease->id, 'kamar_id' => $newRoom->id, 'status' => 'aktif']);
+        $this->assertDatabaseHas('pembayarans', ['id' => $payment->id, 'sewa_id' => $lease->id, 'status' => 'belum_lunas']);
+        $this->assertDatabaseHas('invoices', ['payment_id' => $payment->id, 'status' => 'draft', 'jumlah_tagihan' => 550000]);
+        $this->assertDatabaseCount('keuangans', 0);
+
+        $this->post('/pembayarans/'.$payment->id.'/approve')->assertRedirect();
+        $this->post('/pembayarans/'.$payment->id.'/approve')->assertRedirect();
+        $this->assertSame('tersedia', $oldRoom->fresh()->status);
+        $this->assertSame('terisi', $newRoom->fresh()->status);
+        $this->assertDatabaseCount('invoices', 1);
+        $this->assertDatabaseCount('keuangans', 1);
+        $this->assertDatabaseHas('invoices', ['payment_id' => $payment->id, 'status' => 'lunas', 'jumlah_tagihan' => 550000]);
+        $this->assertDatabaseHas('keuangans', ['payment_id' => $payment->id, 'jumlah' => 550000]);
+        $this->assertStringContainsString('Kamar MOVE-NEW', $payment->fresh()->ledgerEntry->deskripsi);
+    }
+
     public function test_stale_approval_after_legacy_payment_move_is_rejected_and_fresh_retry_recovers(): void
     {
         $this->actingAs(User::factory()->create());

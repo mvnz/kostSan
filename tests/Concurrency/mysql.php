@@ -33,6 +33,7 @@ Illuminate\Support\Facades\Http::preventStrayRequests();
 
 use App\Http\Controllers\PembayaranController;
 use App\Http\Controllers\ReservasiController;
+use App\Http\Controllers\SewaController;
 use App\Models\Invoice;
 use App\Models\Kamar;
 use App\Models\Keuangan;
@@ -246,6 +247,47 @@ try {
     check((int) Invoice::where('payment_id', $legacy->id)->value('penghuni_id') === $other->id, 'Invoice belongs to old source.');
     check(Keuangan::where('payment_id', $legacy->id)->count() === 1 && (string) Keuangan::where('payment_id', $legacy->id)->value('jumlah') === '650000.00', 'Fresh retry ledger inconsistent.');
     echo "PASS edit/approve race: stale source rejected, old room unchanged, fresh retry one invoice/income 650000\n";
+
+    // The payment can keep its lease while that lease moves to another room.
+    $moveFrom = Kamar::create(['nomor' => 'MYSQL-MOVE-OLD', 'tipe' => 'Test', 'harga_bulanan' => 550000, 'status' => 'terisi']);
+    $moveTo = Kamar::create(['nomor' => 'MYSQL-MOVE-NEW', 'tipe' => 'Test', 'harga_bulanan' => 550000, 'status' => 'tersedia']);
+    $movingLease = Sewa::create(['kamar_id' => $moveFrom->id, 'penghuni_id' => $resident->id, 'tanggal_masuk' => '2026-10-01', 'tanggal_keluar' => '2026-11-01', 'biaya_bulanan' => 550000, 'status' => 'aktif']);
+    $movingPayment = Pembayaran::create(['sewa_id' => $movingLease->id, 'periode' => '2026-10-01', 'jumlah' => 550000, 'metode' => 'cash', 'status' => 'belum_lunas']);
+    $worker = new Process([PHP_BINARY, __FILE__, 'worker', 'approve', (string) $movingPayment->id, '0'], $root);
+    $worker->setTimeout(25);
+    DB::beginTransaction();
+    try {
+        Kamar::whereKey($moveFrom->id)->lockForUpdate()->firstOrFail();
+        $worker->start();
+        waitForLocks([$worker], 'kamars');
+        echo "CONTENTION lease-move/approve: approval blocked on old room before lease move commits\n";
+        app(SewaController::class)->update(Request::create('/sewas/'.$movingLease->id, 'PUT', [
+            'kamar_id' => $moveTo->id, 'penghuni_id' => $resident->id,
+            'tanggal_masuk' => '2026-10-01', 'tanggal_keluar' => '2026-11-01',
+            'biaya_bulanan' => 550000, 'status' => 'aktif',
+        ]), $movingLease);
+        DB::commit();
+        check($worker->wait() === 0, 'Room-move approval worker failed: '.$worker->getErrorOutput());
+        check(json_decode(trim($worker->getOutput()), true, flags: JSON_THROW_ON_ERROR) === ['result' => 'validation', 'fields' => ['pembayaran']], 'Stale approval did not reject changed lease room.');
+    } finally {
+        if (DB::transactionLevel() > 0) {
+            DB::rollBack();
+        }
+        if ($worker->isRunning()) {
+            $worker->stop(1);
+        }
+    }
+    check($moveFrom->fresh()->status === 'tersedia' && $moveTo->fresh()->status === 'terisi', 'Stale approval corrupted moved-room status.');
+    check($movingPayment->fresh()->status === 'belum_lunas' && $movingLease->fresh()->kamar_id === $moveTo->id, 'Room-move payment/lease inconsistent.');
+    check(Invoice::where('payment_id', $movingPayment->id)->value('status') === 'draft' && ! Keuangan::where('payment_id', $movingPayment->id)->exists(), 'Room-move stale approval wrote paid invoice/ledger.');
+    operate('approve', $movingPayment->id, 0);
+    operate('approve', $movingPayment->id, 0);
+    check($moveFrom->fresh()->status === 'tersedia' && $moveTo->fresh()->status === 'terisi', 'Fresh room-move retry altered wrong room.');
+    check(Invoice::where('payment_id', $movingPayment->id)->count() === 1 && Invoice::where('payment_id', $movingPayment->id)->value('status') === 'lunas'
+        && (string) Invoice::where('payment_id', $movingPayment->id)->value('jumlah_tagihan') === '550000.00', 'Room-move retry invoice inconsistent.');
+    $income = Keuangan::where('payment_id', $movingPayment->id)->sole();
+    check((string) $income->jumlah === '550000.00' && str_contains($income->deskripsi, 'Kamar MYSQL-MOVE-NEW'), 'Room-move retry income amount/room inconsistent.');
+    echo "PASS lease-move/approve race: stale room rejected, room states preserved, fresh retry one invoice/income 550000 for new room\n";
 } catch (Throwable $exception) {
     fwrite(STDERR, get_class($exception).': '.$exception->getMessage()."\n");
     exit(1);
