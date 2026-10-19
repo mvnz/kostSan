@@ -858,6 +858,53 @@ try {
         && Keuangan::where('payment_id', $amountPayment->id)->count() === 1
         && (string) Keuangan::where('payment_id', $amountPayment->id)->value('jumlah') === '9999999999.99', 'Maximum payment/invoice/approval retry lost precision or duplicated income.');
     echo "PASS manual payment amount boundary: overflow create/update rejected without records/proof changes, zero accepted, maximum9999999999.99 exact through invoice and approval retry one income\n";
+    foreach (['MULTIPLY', 'ROUND', 'EXISTING'] as $case) {
+        $publicRoom = Kamar::create(['nomor' => 'MYSQL-PUBLIC-'.$case, 'tipe' => 'Test', 'harga_bulanan' => 550000, 'status' => 'terisi']);
+        $publicLease = Sewa::create(['kamar_id' => $publicRoom->id, 'penghuni_id' => $resident->id,
+            'tanggal_masuk' => '2026-10-01', 'tanggal_keluar' => $case === 'ROUND' ? '2026-11-01' : '2027-01-01',
+            'biaya_bulanan' => $case === 'ROUND' ? '9999999999.99' : '5000000000.00', 'status' => 'aktif']);
+        $publicLink = App\Models\SewaPaymentLink::create(['sewa_id' => $publicLease->id,
+            'token' => Illuminate\Support\Str::random(64), 'expires_at' => now()->addDay()]);
+        if ($case === 'EXISTING') {
+            $existing = Pembayaran::create(['sewa_id' => $publicLease->id, 'periode' => '2026-10-01',
+                'jumlah' => '9999999999.99', 'metode' => 'cash', 'status' => 'belum_lunas']);
+            $publicLink->update(['payment_id' => $existing->id]);
+        } else {
+            $history = [$publicLink->fresh()->getAttributes(), $publicLease->fresh()->getAttributes(), $publicRoom->fresh()->getAttributes()];
+            $counts = [Pembayaran::count(), Invoice::count(), Keuangan::count()];
+            $files = Illuminate\Support\Facades\Storage::disk('local')->allFiles();
+            try {
+                app(App\Http\Controllers\SewaPaymentRegistrationController::class)->store(Request::create('/pembayaran/sewa/synthetic', 'POST', ['metode' => 'transfer', 'jumlah' => 1], [], [
+                    'bukti_pembayaran' => Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 10, 'application/pdf'),
+                ]), $publicLink->token);
+                throw new RuntimeException('Public computed overflow accepted.');
+            } catch (ValidationException $exception) {
+                check(array_keys($exception->errors()) === ['metode'], 'Public overflow validation field mismatch.');
+            }
+            check($history === [$publicLink->fresh()->getAttributes(), $publicLease->fresh()->getAttributes(), $publicRoom->fresh()->getAttributes()]
+                && $counts === [Pembayaran::count(), Invoice::count(), Keuangan::count()]
+                && $files === Illuminate\Support\Facades\Storage::disk('local')->allFiles()
+                && DB::transactionLevel() === 0 && ! DB::connection()->getPdo()->inTransaction(), 'Public overflow changed history/files or left transaction open.');
+            $publicLease->update(['biaya_bulanan' => $case === 'ROUND' ? '9999950000.00' : '550000.25']);
+        }
+        $expected = match ($case) { 'MULTIPLY' => '1650000.00', 'ROUND' => '9999950000.00', 'EXISTING' => '9999999999.99' };
+        $response = app(App\Http\Controllers\SewaPaymentRegistrationController::class)->store(Request::create('/pembayaran/sewa/synthetic', 'POST', ['metode' => 'transfer', 'jumlah' => 1], [], [
+            'bukti_pembayaran' => Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 10, 'application/pdf'),
+        ]), $publicLink->token);
+        $publicPayment = Pembayaran::where('sewa_id', $publicLease->id)->sole();
+        check($response->name() === 'sewa-payment-registrations.success' && $publicLink->fresh()->used_at !== null
+            && (string) $publicPayment->jumlah === $expected && (string) $publicPayment->invoice->jumlah_tagihan === $expected, 'Public corrected/existing payment amount or link mismatch.');
+        if ($case !== 'EXISTING') {
+            check($publicPayment->coverage_start->toDateString() === '2026-10-01'
+                && $publicPayment->coverage_end->toDateString() === ($case === 'ROUND' ? '2026-11-01' : '2027-01-01'), 'Public corrected coverage mismatch.');
+        }
+        operate('approve', $publicPayment->id, 0);
+        operate('approve', $publicPayment->id, 0);
+        check(Invoice::where('payment_id', $publicPayment->id)->count() === 1 && $publicPayment->invoice->fresh()->status === 'lunas'
+            && Keuangan::where('payment_id', $publicPayment->id)->count() === 1
+            && (string) Keuangan::where('payment_id', $publicPayment->id)->value('jumlah') === $expected, 'Public payment retry duplicated invoice/income or lost precision.');
+        echo "PASS public total {$case}: capacity guard/recovery or existing bill preserved, exact {$expected}, one invoice/income\n";
+    }
 } catch (Throwable $exception) {
     fwrite(STDERR, get_class($exception).': '.$exception->getMessage()."\n");
     exit(1);

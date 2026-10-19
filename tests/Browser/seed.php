@@ -74,5 +74,13 @@ Illuminate\Support\Facades\DB::transaction(function (): void {
         'payment_id' => $reversed->id, 'original_entry_id' => $income->id, 'reversal_entry_id' => $offset->id,
         'reversal_date' => now()->toDateString(), 'reason' => 'Synthetic browser reversal',
     ]);
+    foreach (['phone', 'tablet', 'desktop'] as $viewport) {
+        $publicRoom = App\Models\Kamar::create(['nomor' => 'BROWSER-PUBLIC-'.$viewport, 'tipe' => 'Browser', 'harga_bulanan' => 550000, 'status' => 'terisi']);
+        $publicLease = App\Models\Sewa::create(['kamar_id' => $publicRoom->id, 'penghuni_id' => $resident->id,
+            'tanggal_masuk' => '2026-10-01', 'tanggal_keluar' => '2027-01-01', 'biaya_bulanan' => '5000000000.00', 'status' => 'aktif']);
+        // Known synthetic tokens only inside this guarded, ephemeral browser fixture.
+        App\Models\SewaPaymentLink::create(['sewa_id' => $publicLease->id,
+            'token' => str_pad('synthetic-public-total-'.$viewport, 64, '0'), 'expires_at' => now()->addDay()]);
+    }
 });
 fwrite(STDOUT, "Synthetic browser fixture ready; no notifications sent.\n");

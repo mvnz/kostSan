@@ -129,6 +129,11 @@ class SewaPaymentRegistrationController extends Controller
                 }
 
                 $billing = $this->calculateBilling($lease);
+                if ($billing['total'] > 9999999999.99) {
+                    throw ValidationException::withMessages([
+                        'metode' => 'Total tagihan terlalu besar untuk diproses. Hubungi pengelola untuk memeriksa tarif dan masa sewa; pembayaran belum dibuat.',
+                    ]);
+                }
                 $start = $lease->tanggal_masuk->copy();
                 $end = $lease->tanggal_keluar?->copy() ?? $start->copy()->addMonthsNoOverflow($billing['durasi_bulan']);
                 if ($end->lessThanOrEqualTo($start)) {
