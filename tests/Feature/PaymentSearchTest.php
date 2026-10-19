@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Kamar;
 use App\Models\Pembayaran;
 use App\Models\Penghuni;
+use App\Models\Role;
 use App\Models\Sewa;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -101,6 +102,48 @@ class PaymentSearchTest extends TestCase
             $this->getJson($path.'?'.http_build_query(['q' => str_repeat('x', 101), 'metode' => 'invalid']))
                 ->assertUnprocessable()->assertJsonValidationErrors(['q', 'metode']);
             $this->getJson($path.'?q[]=invalid')->assertUnprocessable()->assertJsonValidationErrors(['q']);
+        }
+    }
+
+    public function test_html_invalid_filters_escape_same_url_redirect_and_allow_matching_list_and_csv_after_recovery(): void
+    {
+        $matching = $this->payment('Synthetic recovery', 'REC-01');
+        $this->payment('Synthetic other', 'REC-02', ['metode' => 'cash']);
+        $paymentHistory = Pembayaran::orderBy('id')->get()->map(fn ($row) => $row->getAttributes())->all();
+        foreach (['/pembayarans', '/pembayarans/export'] as $path) {
+            foreach ([['bulan' => '2026-99'], ['bulan' => ['2026-10']], ['status' => 'invalid'], ['status' => ['lunas']], ['metode' => 'invalid'], ['metode' => ['cash']], ['q' => str_repeat('x', 101)], ['q' => ['invalid']]] as $filters) {
+                $url = $path.'?'.http_build_query($filters);
+                $this->from($url)->get($url)->assertRedirect(route('pembayarans.index'))
+                    ->assertSessionHasErrors(array_keys($filters));
+                $this->get('/pembayarans')->assertOk()->assertSee('alert-danger', false);
+            }
+        }
+        $filters = ['q' => 'REC-01', 'bulan' => '2026-10', 'status' => 'belum_lunas', 'metode' => 'transfer'];
+        $query = http_build_query($filters);
+        $this->get('/pembayarans?'.$query)->assertOk()
+            ->assertViewHas('pembayarans', fn ($rows) => $rows->modelKeys() === [$matching->id]);
+        $csv = $this->get('/pembayarans/export?'.$query)->assertOk()->streamedContent();
+        $lines = explode("\n", trim(substr($csv, 3)));
+        $this->assertCount(2, $lines);
+        $this->assertSame((string) $matching->id, str_getcsv($lines[1], ',', '"', '')[0]);
+        $this->assertSame($paymentHistory, Pembayaran::orderBy('id')->get()->map(fn ($row) => $row->getAttributes())->all());
+        $this->assertDatabaseCount('invoices', 2);
+        $this->assertDatabaseCount('keuangans', 0);
+    }
+
+    public function test_invalid_filters_do_not_bypass_login_or_payment_view_permission(): void
+    {
+        $this->app['auth']->logout();
+        foreach (['/pembayarans', '/pembayarans/export'] as $path) {
+            $this->get($path.'?status=invalid')->assertRedirect('/login');
+        }
+        $role = Role::create(['name' => 'Synthetic no payment access', 'menu_permissions' => ['dashboard' => ['view']]]);
+        $this->actingAs(User::factory()->create(['role_id' => $role->id]));
+        foreach (['/pembayarans', '/pembayarans/export'] as $path) {
+            $this->get($path.'?status=invalid')->assertRedirect(route('dashboard'))
+                ->assertSessionHas('error', 'Anda tidak memiliki akses ke halaman tersebut.')
+                ->assertSessionHasNoErrors();
+            $this->getJson($path.'?status=invalid')->assertForbidden();
         }
     }
 }

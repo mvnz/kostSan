@@ -55,6 +55,8 @@ Buka **Pembayaran**, isi **Penghuni atau kamar** untuk mencari sebagian nama pen
 
 CSV berisi ID pembayaran, nomor kamar, nama penghuni, periode, tanggal bayar, metode, nominal, dan status. Nominal tidak memakai pemisah ribuan sehingga mudah dijumlahkan. CSV menggunakan UTF-8 dan input yang berpotensi menjadi formula spreadsheet diberi awalan apostrof. Hak **Lihat Data Sewa** diperlukan; ekspor tidak mengirim pesan ke penghuni dan tidak mengubah transaksi. Status `belum_lunas` mencakup tagihan yang belum dibayar maupun pembayaran yang belum disetujui sesuai model saat ini.
 
+Jika URL filter daftar atau ekspor pembayaran tidak valid, browser kembali ke daftar tanpa filter dengan pesan error. Isi ulang filter yang benar lalu terapkan/ekspor kembali. Ekspor invalid tidak otomatis mengunduh seluruh data tanpa filter; klien JSON tetap menerima422 dan field error. Perilaku ini tidak mengubah hak akses atau hasil filter yang valid.
+
 ## Pengujian dan kelanjutan review
 
 ### Smoke browser dengan data sintetis
@@ -99,6 +101,8 @@ npm run build
 PHPUnit memakai SQLite di memori dan data sintetis. Tes mencakup hak akses, keamanan link/dokumen, konflik sewa/reservasi, approval berulang, akhir bulan, ekspor, halaman utama, PDF kontrak, dan alur pendaftaran-pembayaran-approval. GitHub Actions menjalankan pemeriksaan dependency, migrasi database baru, suite tes, build, serta kompilasi route/view pada setiap PR dan perubahan `main`.
 
 Job **mysql-concurrency** memakai service MySQL 8.4 ephemeral dengan schema/user khusus. Harness `tests/Concurrency/mysql.php` menolak target lain dan schema tidak kosong, menjalankan migrasi, rollback terbaru, serta rollback/reapply seluruh migrasi **sebelum seeding**, lalu menguji dua proses controller bersamaan: approval idempotent, tagihan overlapping, reservasi bentrok, dan rollback saat ledger gagal. Parent menahan row lock sampai kedua query worker terlihat menunggu; bukan retry berurutan. Jangan jalankan pada database operasional. Kredensial sintetis workflow hanya untuk service CI; tidak ada data/notifikasi penghuni. Ini bukan suite lintas-engine penuh, bukti rollback data legacy aman, atau bukti kesesuaian versi/isolation deployment. Middleware izin/CSRF tetap diuji oleh suite HTTP/browser, bukan controller harness ini.
+
+Harness yang sama juga memeriksa daftar/CSV pembayaran langsung pada MySQL: filter gabungan, batas Februari kabisat, karakter pencarian literal, UTF-8/nama berkoma/formula/nominal desimal, kesamaan ID hasil, dan penolakan input invalid tanpa write. Ini bukan bukti kesamaan seluruh collation atau perilaku pada setiap versi MySQL; browser/HTTP tetap diperlukan untuk memeriksa redirect, pesan, dan hak akses.
 
 **Status operasional penuh belum dinyatakan siap.** Rekonsiliasi data historis pembayaran–invoice–buku keuangan dan persaingan transaksi pada database deployment masih memerlukan verifikasi lanjutan. Baca catatan terbaru dalam [`docs/reviews`](docs/reviews) sebelum melanjutkan pekerjaan. Tes tidak menghubungi layanan WhatsApp, memakai data penghuni asli, atau mengubah server/database produksi.
 

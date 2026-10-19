@@ -98,6 +98,101 @@ function operatorRequest(string $uri, string $method, array $payload, int $opera
     return $request;
 }
 
+function checkPaymentFilters(): void
+{
+    $makePayment = function (string $suffix, string $name, array $attributes = []): Pembayaran {
+        $room = Kamar::create(['nomor' => 'MYSQL-FILTER-'.$suffix, 'tipe' => 'Test', 'harga_bulanan' => 550000, 'status' => 'terisi']);
+        $resident = Penghuni::create(['nama' => $name, 'telepon' => '']);
+        $lease = Sewa::create(['kamar_id' => $room->id, 'penghuni_id' => $resident->id,
+            'tanggal_masuk' => '2028-01-01', 'biaya_bulanan' => 550000, 'status' => 'aktif']);
+
+        return Pembayaran::create(array_replace(['sewa_id' => $lease->id, 'periode' => '2028-02-01',
+            'metode' => 'transfer', 'jumlah' => '550000.25', 'status' => 'belum_lunas'], $attributes));
+    };
+    $name = '=Synthetic 50%_! É, Report';
+    $matching = $makePayment('A', $name, ['periode' => '2028-02-29']);
+    $cash = $makePayment('B', $name, ['periode' => '2028-02-28', 'metode' => 'cash']);
+    $paid = $makePayment('C', $name, ['status' => 'lunas']);
+    $nextMonth = $makePayment('D', $name, ['periode' => '2028-03-01']);
+    $zero = $makePayment('E', 'Synthetic unrelated', ['jumlah' => '0']);
+    $backslash = $makePayment('F', 'Synthetic path\\file');
+    $wildcardDecoy = $makePayment('G', 'Synthetic 50XYZ É, Report');
+    $makePayment('H', 'Synthetic previous month', ['periode' => '2028-01-31']);
+    $allIds = Pembayaran::orderBy('id')->pluck('id')->all();
+    $cases = [
+        [['q' => '50%_!', 'bulan' => '2028-02', 'status' => 'belum_lunas', 'metode' => 'transfer'], [$matching->id]],
+        [['q' => 'MYSQL-FILTER-B'], [$cash->id]],
+        [['q' => '50%_!'], [$matching->id, $cash->id, $paid->id, $nextMonth->id]],
+        [['q' => 'path\\file'], [$backslash->id]],
+        [['q' => "' OR 1=1 --"], []],
+        [['q' => 'SyntheticNoSuchPayment'], []],
+        [['q' => '   '], $allIds],
+        [['q' => 'MYSQL-FILTER-', 'bulan' => '2028-02'], [$matching->id, $cash->id, $paid->id, $zero->id, $backslash->id, $wildcardDecoy->id]],
+    ];
+    $writes = [];
+    $active = true;
+    DB::listen(function ($event) use (&$writes, &$active): void {
+        if ($active && preg_match('/^\s*select\s/i', $event->sql) !== 1) {
+            $writes[] = $event->sql;
+        }
+    });
+    try {
+        foreach ($cases as [$filters, $expected]) {
+            sort($expected, SORT_NUMERIC);
+            $request = Request::create('/pembayarans', 'GET', $filters);
+            $ids = app(PembayaranController::class)->index($request)->getData()['pembayarans']->modelKeys();
+            sort($ids, SORT_NUMERIC);
+            check($ids === $expected, 'MySQL payment list did not match expected filter IDs.');
+            $response = app(PembayaranController::class)->export(Request::create('/pembayarans/export', 'GET', $filters));
+            check($response->getStatusCode() === 200, 'MySQL payment export failed.');
+            ob_start();
+            try {
+                $response->sendContent();
+                $csv = ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+            check(str_starts_with($csv, "\xEF\xBB\xBF"), 'MySQL payment CSV lost UTF-8 BOM.');
+            $stream = fopen('php://memory', 'r+');
+            try {
+                fwrite($stream, substr($csv, 3));
+                rewind($stream);
+                check(count(fgetcsv($stream, 0, ',', '"', '')) === 8, 'MySQL payment CSV header changed.');
+                $csvIds = [];
+                while (($row = fgetcsv($stream, 0, ',', '"', '')) !== false) {
+                    check(count($row) === 8, 'MySQL payment CSV quoting broke column count.');
+                    $csvIds[] = (int) $row[0];
+                    if ((int) $row[0] === $matching->id) {
+                        check($row[2] === "'".$name && $row[3] === '2028-02-29' && $row[6] === '550000.25', 'MySQL payment CSV changed formula protection, UTF-8, date or decimal amount.');
+                    }
+                    if ((int) $row[0] === $zero->id) {
+                        check($row[6] === '0.00', 'MySQL payment CSV lost zero amount.');
+                    }
+                }
+            } finally {
+                fclose($stream);
+            }
+            sort($csvIds, SORT_NUMERIC);
+            check($csvIds === $expected, 'MySQL payment CSV did not match list IDs.');
+        }
+        foreach (['index', 'export'] as $action) {
+            foreach ([['bulan' => '2028-99'], ['q' => ['invalid']], ['status' => 'invalid'], ['metode' => ['cash']]] as $filters) {
+                try {
+                    app(PembayaranController::class)->{$action}(Request::create('/pembayarans', 'GET', $filters));
+                    throw new RuntimeException('MySQL payment filter validation accepted invalid input.');
+                } catch (ValidationException $exception) {
+                    check(array_keys($exception->errors()) === array_keys($filters)
+                        && $exception->redirectTo === route('pembayarans.index'), 'MySQL invalid payment filter lost field errors or clean recovery target.');
+                }
+            }
+        }
+        check($writes === [], 'Payment list/export executed a non-read query.');
+    } finally {
+        $active = false;
+    }
+    echo "PASS MySQL payment filters: eight list/CSV cases, leap-month boundaries, literal search, UTF-8/formula/decimal output, eight invalid requests and no writes\n";
+}
+
 function moveLease(Sewa $lease, int $roomId): void
 {
     app(SewaController::class)->update(Request::create('/sewas/'.$lease->id, 'PUT', [
@@ -905,6 +1000,7 @@ try {
             && (string) Keuangan::where('payment_id', $publicPayment->id)->value('jumlah') === $expected, 'Public payment retry duplicated invoice/income or lost precision.');
         echo "PASS public total {$case}: capacity guard/recovery or existing bill preserved, exact {$expected}, one invoice/income\n";
     }
+    checkPaymentFilters();
 } catch (Throwable $exception) {
     fwrite(STDERR, get_class($exception).': '.$exception->getMessage()."\n");
     exit(1);

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 test.beforeEach(async ({ page }) => {
     page.on('pageerror', error => {
@@ -149,4 +150,35 @@ test('public computed overflow preserves link and explains operator recovery', a
     await chooseDropdown(page, 'metode', 'Cash');
     await page.getByRole('button', { name: 'Kirim Pembayaran', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Pembayaran sewa berhasil dikirim', exact: true })).toBeVisible();
+});
+
+test('invalid payment filters recover to a usable list and matching CSV', async ({ page }, testInfo) => {
+    await login(page, 'admin');
+    let downloads = 0;
+    page.on('download', () => { downloads++; });
+    for (const path of ['/pembayarans?bulan=2026-99', '/pembayarans/export?bulan=2026-99']) {
+        await page.goto(path, { referer: new URL(path, 'http://127.0.0.1:8115').href });
+        await expect(page).toHaveURL(/\/pembayarans$/);
+        await expect(page.locator('.alert-danger')).toContainText('Format bulan harus YYYY-MM.');
+        await expect(page.locator('#payment-month')).toHaveValue('');
+        expect(downloads, 'Invalid export must not download unfiltered records').toBe(0);
+    }
+    await checkLayout(page, testInfo, 'payment-filter-recovery');
+    await page.getByLabel('Penghuni atau kamar', { exact: true }).fill('BROWSER-01');
+    await chooseDropdown(page, 'status', 'Belum lunas');
+    await chooseDropdown(page, 'metode', 'Tunai');
+    await page.getByRole('button', { name: 'Terapkan', exact: true }).click();
+    await expect(page.locator('#tbl-pembayaran tbody tr')).toHaveCount(1);
+    await expect(page.locator('#tbl-pembayaran tbody')).toContainText('550.000');
+    const pendingDownload = page.waitForEvent('download');
+    await page.getByRole('link', { name: 'Export CSV' }).click();
+    const download = await pendingDownload;
+    expect(download.suggestedFilename()).toMatch(/^pembayaran-.*\.csv$/);
+    const csv = await readFile(await download.path(), 'utf8');
+    const lines = csv.replace(/^\uFEFF/, '').trim().split(/\r?\n/);
+    expect(lines).toHaveLength(2);
+    const columns = lines[1].split(',');
+    expect(columns[0]).toBe('1');
+    expect(columns[6]).toBe('550000.00');
+    expect(columns[7]).toBe('belum_lunas');
 });
