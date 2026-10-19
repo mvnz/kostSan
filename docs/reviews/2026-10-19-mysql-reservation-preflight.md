@@ -1,0 +1,19 @@
+# Preflight enum reservasi MySQL
+
+## Kebutuhan sebelum implementasi
+
+19 Oktober 2026 18.02 WIB: main terbaru3b23279a6e8cd0c3a1b655e1e472fe004a59b596, basis PR #12 head2c5188e1434aea03558700f352c63591c607877e/CI39235036599 sukses. PR #4–12 draft tanpa issue/komentar/perubahan baru; worktree bersih, AGENTS.md tidak ditemukan. Baca README, command UI, source konversi/migrasi dan metadata processor Laravel. Gap terbukti: pemeriksaan release baru untuk aset UI; enum MySQL yang menolak dikonversi pernah direproduksi1265 tetapi belum ada command yang memeriksa metadata sebenarnya sebelum alur itu dijalankan. Staging/deployment masih belum terverifikasi; tidak akan mengakses produksi untuk mengisinya.
+
+Pilih `kost:check-mysql-reservations`: fitur diagnostik kecil, bukan pemeriksaan seluruh database atau aturan baru mewajibkan aplikasi memakai MySQL. Kriteria: koneksi MySQL configured dibaca lewat metadata schema saja; enum reservasis.status harus memuat lima status lifecycle; exit0 hanya untuk kompatibilitas enum itu. Enum lama gagal dan menyebut nilai yang hilang/petunjuk tinjau migrasi, tanpa menjalankan migrasi. Jenis bukan enum/kolom hilang gagal. SQLite/driver lain gagal jelas sebelum query, bukan dianggap bukti MySQL dan bukan larangan menjalankan aplikasi SQLite. Kegagalan koneksi/metadata ditangani generik tanpa SQL/host/database/username/password/path/isi exception atau isi record. Tidak mengubah config/schema/data/file, tidak memanggil notifikasi. MySQL CI nyata menguji legacy/expanded/non-enum dan menangkap query hanya SELECT metadata; snapshot raw data/schema tetap. Mock lokal hanya untuk kegagalan adapter/metadata, bukan bukti koneksi/locking MySQL. Tes command tidak tersedia harus gagal sebelum fitur ditambahkan; semua suite dan tujuh kategori final diulang.
+
+Scope tidak meliputi pending migration lain, FK/index/invoice/rekonsiliasi/permission/runtime storage, penilaian DDL atau UAT. Command tidak ditambahkan ke scheduler/UI; operator deployment menjalankan manual pada koneksi yang memang hendak diperiksa, tidak mencetak identitas koneksi. PR terpisah agar tidak menambah fitur lain ke #12.
+
+## Implementasi dan bukti awal
+
+Command baru memakai schema builder Laravel yang sudah tersedia, memeriksa anggota enum secara utuh (bukan substring), dan hanya mencetak status wajib yang hilang. Tidak ada dependency, migrasi, endpoint, scheduler, atau perubahan aturan bisnis baru. README mendokumentasikan pemakaian, exit code, pemulihan, serta batas bukti.
+
+Sebelum command ditambahkan, `PAO_DISABLE=1 php vendor/bin/phpunit --filter MySqlReservationPreflightTest` gagal 3 kali `CommandNotFoundException`. Sesudahnya 3 tes/17 assertion lulus: SQLite tanpa query, kegagalan adapter dengan detail sintetis disembunyikan, kolom hilang ditolak. Ini reproduksi kekurangan fitur, bukan klaim bug bisnis baru. Mock dua jalur error tidak membuktikan server MySQL.
+
+Harness MySQL ditambah legacy enum → gagal dengan dua status hilang; expanded enum → sukses; VARCHAR drift → gagal; pemulihan enum → sukses. Setiap panggilan menangkap query dan membandingkan metadata/raw history sebelum/sesudah; hanya SELECT metadata diizinkan. DDL pembentukan drift dijalankan oleh fixture **di luar command**, hanya pada service CI ephemeral yang dijaga guard schema kosong/konfigurasi sintetis. Seluruh skenario transaksi lama tetap dijalankan. Hasil CI dan validasi akhir akan dicatat setelah tersedia.
+
+Self-review eksplisit: diff dibatasi command/tes/dokumentasi. Tidak membaca data operasional, menampilkan exception/config, menambah HTTP permission surface, mengubah transaksi/file lifecycle, atau memicu notifikasi. Extra anggota enum tetap diizinkan: ini kompatibilitas lima status wajib, bukan definisi lengkap aturan bisnis. Pemeriksaan bersifat snapshot; deployment/writer lain bisa mengubah schema sesudah pemeriksaan. Jangan menganggap exit 0 sebagai koordinasi migrasi atau izin membuka traffic.
