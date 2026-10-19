@@ -116,6 +116,23 @@ function operate(string $operation, int $id, int $resident): void
         ], $resident), Pembayaran::findOrFail($id));
     } elseif ($operation === 'delete-lease') {
         app(SewaController::class)->destroy(Sewa::findOrFail($id));
+    } elseif ($operation === 'convert') {
+        $reservation = Reservasi::findOrFail($id);
+        app(SewaController::class)->store(Request::create('/sewas', 'POST', [
+            'reservasi_id' => $id, 'kamar_id' => $reservation->kamar_id, 'penghuni_id' => $reservation->penghuni_id,
+            'tanggal_masuk' => $reservation->rencana_masuk->toDateString(),
+            'tanggal_keluar' => $reservation->rencana_keluar?->toDateString(),
+            'biaya_bulanan' => 550000.25, 'uang_jaminan' => 125000.25, 'status' => 'aktif',
+        ]));
+    } elseif ($operation === 'cancel-reservation') {
+        $reservation = Reservasi::findOrFail($id);
+        app(ReservasiController::class)->update(Request::create('/reservasis/'.$id, 'PUT', [
+            'kamar_id' => $reservation->kamar_id, 'penghuni_id' => $reservation->penghuni_id,
+            'tanggal_reservasi' => $reservation->tanggal_reservasi->toDateString(),
+            'rencana_masuk' => $reservation->rencana_masuk->toDateString(),
+            'rencana_keluar' => $reservation->rencana_keluar?->toDateString(),
+            'uang_muka' => 0, 'status' => 'dibatalkan',
+        ]), $reservation);
     } else {
         throw new RuntimeException('Unknown worker operation.');
     }
@@ -559,6 +576,99 @@ try {
             $worker->stop(1);
         }
     }
+    $conversionFixtures = [];
+    foreach (['DUPLICATE', 'CANCEL', 'ROLLBACK'] as $case) {
+        $conversionRoom = Kamar::create(['nomor' => 'MYSQL-CONVERT-'.$case, 'tipe' => 'Test', 'harga_bulanan' => 550000.25, 'status' => 'tersedia']);
+        $conversionReservation = Reservasi::create(['kamar_id' => $conversionRoom->id, 'penghuni_id' => $resident->id,
+            'tanggal_reservasi' => '2026-10-19', 'rencana_masuk' => '2026-11-01', 'rencana_keluar' => '2026-12-01',
+            'uang_muka' => 125000.25, 'status' => 'dikonfirmasi']);
+        $conversionFixtures[$case] = [$conversionRoom, $conversionReservation];
+    }
+    [$conversionRoom, $conversionReservation] = $conversionFixtures['DUPLICATE'];
+    $leaseCount = Sewa::count();
+    $results = race('convert', 'kamars', $conversionRoom->id, $conversionReservation->id, [0, 0]);
+    $states = array_column($results, 'result');
+    sort($states);
+    check($states === ['ok', 'validation'] && in_array(['result' => 'validation', 'fields' => ['reservasi_id']], $results, true), 'Double conversion did not reject exactly one request.');
+    $convertedLease = $conversionReservation->fresh()->sewa;
+    check(Sewa::count() === $leaseCount + 1 && $convertedLease !== null && $conversionReservation->fresh()->status === 'dikonversi', 'Conversion created duplicate/orphan leases.');
+    check($convertedLease->kamar_id === $conversionRoom->id && $convertedLease->penghuni_id === $resident->id
+        && $convertedLease->tanggal_masuk->toDateString() === '2026-11-01' && $convertedLease->tanggal_keluar->toDateString() === '2026-12-01'
+        && (string) $convertedLease->biaya_bulanan === '550000.25' && (string) $convertedLease->uang_jaminan === '125000.25'
+        && (string) $conversionReservation->fresh()->uang_muka === '125000.25' && $conversionRoom->fresh()->status === 'terisi', 'Conversion owner/period/money/room inconsistent.');
+    app(PembayaranController::class)->store(Request::create('/pembayarans', 'POST', [
+        'sewa_id' => $convertedLease->id, 'periode' => '2026-11-01', 'jumlah' => 550000.25, 'metode' => 'cash',
+    ]));
+    $convertedPayment = Pembayaran::where('sewa_id', $convertedLease->id)->sole();
+    operate('approve', $convertedPayment->id, 0);
+    operate('approve', $convertedPayment->id, 0);
+    check($convertedPayment->fresh()->status === 'lunas' && Invoice::where('payment_id', $convertedPayment->id)->count() === 1
+        && (string) $convertedPayment->fresh()->invoice->jumlah_tagihan === '550000.25' && $convertedPayment->fresh()->invoice->status === 'lunas'
+        && Keuangan::where('payment_id', $convertedPayment->id)->count() === 1
+        && (string) $convertedPayment->fresh()->ledgerEntry->jumlah === '550000.25', 'Converted lease billing/approval retry inconsistent.');
+    check($convertedPayment->coverage_start->toDateString() === '2026-11-01' && $convertedPayment->coverage_end->toDateString() === '2026-12-01', 'Converted lease bill coverage incorrect.');
+    echo "PASS concurrent conversion: one linked lease, one rejected duplicate, billing/approval retry one invoice/income 550000.25\n";
+
+    [$conversionRoom, $conversionReservation] = $conversionFixtures['CANCEL'];
+    $worker = new Process([PHP_BINARY, __FILE__, 'worker', 'cancel-reservation', (string) $conversionReservation->id, '0'], $root);
+    $worker->setTimeout(25);
+    DB::beginTransaction();
+    try {
+        Kamar::whereKey($conversionRoom->id)->lockForUpdate()->firstOrFail();
+        $worker->start();
+        waitForLocks([$worker], 'kamars');
+        echo "CONTENTION conversion/cancel: old cancellation blocked before conversion commits\n";
+        operate('convert', $conversionReservation->id, 0);
+        $convertedLease = $conversionReservation->fresh()->sewa;
+        $history = [$conversionReservation->fresh()->getAttributes(), $convertedLease->getAttributes(), $conversionRoom->fresh()->getAttributes()];
+        DB::commit();
+        check($worker->wait() === 0, 'Concurrent cancellation worker failed: '.$worker->getErrorOutput().$worker->getOutput());
+        check(json_decode(trim($worker->getOutput()), true, flags: JSON_THROW_ON_ERROR) === ['result' => 'validation', 'fields' => ['reservasi']], 'Old cancellation changed converted history.');
+        check($history === [$conversionReservation->fresh()->getAttributes(), $convertedLease->fresh()->getAttributes(), $conversionRoom->fresh()->getAttributes()], 'Cancellation mutated converted reservation/lease/room.');
+        echo "PASS conversion/cancel: stale cancellation rejected, raw conversion history unchanged\n";
+    } finally {
+        if (DB::transactionLevel() > 0) {
+            DB::rollBack();
+        }
+        if ($worker->isRunning()) {
+            $worker->stop(1);
+        }
+    }
+
+    [$conversionRoom, $conversionReservation] = $conversionFixtures['ROLLBACK'];
+    $history = [$conversionReservation->fresh()->getAttributes(), $conversionRoom->fresh()->getAttributes()];
+    $leaseCount = Sewa::count();
+    $financialCounts = [Pembayaran::count(), Invoice::count(), Keuangan::count()];
+    $leaseInserted = false;
+    Sewa::created(function (Sewa $lease) use ($conversionRoom, &$leaseInserted): void {
+        if ($lease->kamar_id === $conversionRoom->id) {
+            $leaseInserted = true;
+        }
+    });
+    DB::statement('ALTER TABLE reservasis ADD CONSTRAINT synthetic_conversion_failure CHECK (id <> '.$conversionReservation->id." OR status <> 'dikonversi')");
+    try {
+        operate('convert', $conversionReservation->id, 0);
+        throw new RuntimeException('Expected reservation-close failure was not raised.');
+    } catch (Illuminate\Database\QueryException $exception) {
+        check(str_contains($exception->getMessage(), 'synthetic_conversion_failure') && $leaseInserted, 'Unexpected failure or lease insert not observed.');
+        check(DB::transactionLevel() === 0 && ! DB::connection()->getPdo()->inTransaction(), 'Conversion failure left transaction open.');
+        check(Sewa::count() === $leaseCount && ! Sewa::where('kamar_id', $conversionRoom->id)->exists(), 'Conversion failure left orphan lease.');
+        check($financialCounts === [Pembayaran::count(), Invoice::count(), Keuangan::count()], 'Conversion failure changed financial records.');
+        check($history === [$conversionReservation->fresh()->getAttributes(), $conversionRoom->fresh()->getAttributes()], 'Failed conversion mutated reservation/room.');
+    } finally {
+        DB::statement('ALTER TABLE reservasis DROP CHECK synthetic_conversion_failure');
+    }
+    operate('convert', $conversionReservation->id, 0);
+    try {
+        operate('convert', $conversionReservation->id, 0);
+        throw new RuntimeException('Recovered conversion accepted duplicate retry.');
+    } catch (ValidationException $exception) {
+        check(array_keys($exception->errors()) === ['reservasi_id'], 'Unexpected conversion retry validation.');
+    }
+    check(Sewa::count() === $leaseCount + 1 && $conversionReservation->fresh()->sewa_id === Sewa::where('kamar_id', $conversionRoom->id)->sole()->id
+        && $conversionReservation->fresh()->status === 'dikonversi' && $conversionRoom->fresh()->status === 'terisi', 'Recovered conversion link/room inconsistent.');
+    check($financialCounts === [Pembayaran::count(), Invoice::count(), Keuangan::count()], 'Conversion retry created unexpected financial records.');
+    echo "PASS conversion rollback: lease insert observed, no orphan/history/finance mutation before cleanup, recovery one linked lease\n";
 } catch (Throwable $exception) {
     fwrite(STDERR, get_class($exception).': '.$exception->getMessage()."\n");
     exit(1);
