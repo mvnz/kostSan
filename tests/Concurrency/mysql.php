@@ -61,6 +61,35 @@ function check(bool $condition, string $message): void
     }
 }
 
+function checkReservationPreflight(int $expected): string
+{
+    $queries = [];
+    $active = true;
+    DB::listen(function ($event) use (&$queries, &$active): void {
+        if ($active) {
+            $queries[] = $event->sql;
+        }
+    });
+    $schemaBefore = Schema::getColumns('reservasis');
+    $rowsBefore = DB::table('reservasis')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+    $queries = [];
+    try {
+        $exit = Artisan::call('kost:check-mysql-reservations');
+        $output = Artisan::output();
+    } finally {
+        $active = false;
+    }
+    check($exit === $expected, 'Reservation preflight exit code mismatch.');
+    check(count($queries) > 0, 'Reservation preflight did not inspect real metadata.');
+    foreach ($queries as $sql) {
+        check(preg_match('/^select\s/i', $sql) === 1 && str_contains(strtolower($sql), 'information_schema.columns'), 'Preflight queried beyond column metadata.');
+    }
+    check($schemaBefore === Schema::getColumns('reservasis')
+        && $rowsBefore === DB::table('reservasis')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all(), 'Preflight changed schema or reservation history.');
+
+    return $output;
+}
+
 function operatorRequest(string $uri, string $method, array $payload, int $operator): Request
 {
     $request = Request::create($uri, $method, $payload);
@@ -242,7 +271,20 @@ try {
     $legacyHistory = DB::table('reservasis')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
     $statusMigration->down();
     check($legacyHistory === DB::table('reservasis')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all(), 'Status rollback changed legacy reservations.');
+    $legacyOutput = checkReservationPreflight(1);
+    check(str_contains($legacyOutput, 'dikonversi') && str_contains($legacyOutput, 'kedaluwarsa'), 'Preflight did not identify missing lifecycle statuses.');
     $statusMigration->up();
+    check(str_contains(checkReservationPreflight(0), 'kelima status lifecycle'), 'Expanded enum was not accepted.');
+    Schema::table('reservasis', function ($table): void {
+        $table->string('status')->default('menunggu')->change();
+    });
+    try {
+        check(str_contains(checkReservationPreflight(1), 'bukan enum MySQL'), 'Non-enum schema drift was not rejected.');
+    } finally {
+        $statusMigration->up();
+    }
+    check(str_contains(checkReservationPreflight(0), 'kelima status lifecycle'), 'Restored enum was not accepted.');
+    echo "PASS read-only reservation preflight: legacy enum rejected, expanded enum accepted, non-enum rejected; metadata-only queries and unchanged schema/history\n";
     check($legacyHistory === DB::table('reservasis')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all()
         && Schema::hasForeignKey('reservasis', ['sewa_id']) && Schema::hasIndex('reservasis', ['sewa_id'], 'unique'), 'Status expansion lost legacy data/FK/index.');
     DB::table('reservasis')->whereIn('id', $legacyReservationIds)->delete();
