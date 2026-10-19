@@ -109,12 +109,12 @@ class PembayaranController extends Controller
             'periode' => ['required', 'date'],
             'tanggal_bayar' => ['nullable', 'date'],
             'metode' => ['required', 'in:cash,transfer,e-wallet'],
-            'jumlah' => ['required', 'numeric', 'min:0'],
+            'jumlah' => ['required', 'numeric', 'min:0', 'max:9999999999.99'],
             'keterangan' => ['nullable', 'string'],
             'bukti_pembayaran' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:4096'],
             'overlap_override' => ['nullable', 'boolean'],
             'overlap_override_reason' => ['nullable', 'required_if:overlap_override,1', 'string', 'min:10', 'max:500'],
-        ]);
+        ], ['jumlah.max' => 'Jumlah maksimal Rp9.999.999.999,99 sesuai kapasitas penyimpanan.']);
 
         // Pembayaran baru selalu menunggu approval pemilik.
         $validated['status'] = 'belum_lunas';
@@ -175,12 +175,12 @@ class PembayaranController extends Controller
             'periode' => ['required', 'date'],
             'tanggal_bayar' => ['nullable', 'date'],
             'metode' => ['required', 'in:cash,transfer,e-wallet'],
-            'jumlah' => ['required', 'numeric', 'min:0'],
+            'jumlah' => ['required', 'numeric', 'min:0', 'max:9999999999.99'],
             'keterangan' => ['nullable', 'string'],
             'bukti_pembayaran' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:4096'],
             'overlap_override' => ['nullable', 'boolean'],
             'overlap_override_reason' => ['nullable', 'required_if:overlap_override,1', 'string', 'min:10', 'max:500'],
-        ]);
+        ], ['jumlah.max' => 'Jumlah maksimal Rp9.999.999.999,99 sesuai kapasitas penyimpanan.']);
 
         $override = (bool) ($validated['overlap_override'] ?? false);
         $overrideReason = $validated['overlap_override_reason'] ?? null;
