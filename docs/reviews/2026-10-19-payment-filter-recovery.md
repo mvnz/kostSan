@@ -1,0 +1,9 @@
+# Pemulihan URL filter pembayaran invalid
+
+## Kebutuhan sebelum implementasi
+
+19 Oktober 2026 21.24 WIB, waktu nyata diperiksa. Main di-fetch tetap `3b23279a6e8cd0c3a1b655e1e472fe004a59b596`, head draft #15 `d397bd0b3a06428b2dd706ce8dce293de97272d8`, CI39258810023 sukses. PR #4–15 tanpa issue/komentar/perubahan baru atau pekerjaan aktif yang terlihat; worktree bersih, AGENTS.md tidak ditemukan. Baca README main/working tree, riwayat/checkpoint #15, controller/view pembayaran, tes search/export, dan pola pemulihan GET invalid di PR #5 (reservasi, terpisah dan tidak diduplikasi).
+
+Gap yang akan direproduksi: filteredPayments dipakai daftar dan CSV, tetapi $request->validate pada GET belum menetapkan tujuan pemulihan. Referer/previous URL yang invalid dapat mengarahkan browser kembali ke URL invalid. Tes existing hanya JSON422, bukan redirect dan kemampuan memakai filter lagi. Ini kebutuhan alur operasional nyata (bookmark/URL tersalin/query salah), bukan fitur nominal tambahan.
+
+Scope: daftar dan export pembayaran saja, memakai pola Validator+ValidationException redirectTo yang sudah ada di PR #5. Kriteria: GET HTML invalid (bulan/status/metode/query terlalu panjang/array) kembali satu langkah ke route daftar bersih, error tetap jelas dan halaman200; tidak menghasilkan CSV tanpa filter yang diminta. JSON tetap422 beserta field error. Permission/guest tetap diperiksa sebelum query/ekspor; input invalid tidak mengubah payment/invoice/ledger. Sesudah pemulihan, filter valid dan CSV harus memuat ID/nominal yang sama; input wildcard/injection-like lama tetap literal. Browser tiga viewport menguji invalid URL→pesan→filter valid→CSV sesuai. Tidak menambah UI text statis, dependency, schema, transaksi, atau memperluas perubahan ke filter modul lain. UAT manusia tetap belum diuji. Tidak mengakses produksi/data penghuni nyata/notifikasi.
