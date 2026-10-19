@@ -232,6 +232,21 @@ try {
     $room = Kamar::create(['nomor' => 'MYSQL-01', 'tipe' => 'Test', 'harga_bulanan' => 550000, 'status' => 'terisi']);
     $resident = Penghuni::create(['nama' => 'Synthetic MySQL One', 'telepon' => '']);
     $other = Penghuni::create(['nama' => 'Synthetic MySQL Two', 'telepon' => '']);
+    $statusMigration = require $root.'/database/migrations/2026_10_19_090000_expand_reservation_lifecycle_statuses.php';
+    $legacyReservationIds = [];
+    foreach (['menunggu', 'dikonfirmasi', 'dibatalkan'] as $status) {
+        $legacyReservationIds[] = Reservasi::create(['kamar_id' => $room->id, 'penghuni_id' => $resident->id,
+            'tanggal_reservasi' => '2026-01-01', 'rencana_masuk' => '2026-01-01', 'rencana_keluar' => '2026-02-01',
+            'uang_muka' => 125000.25, 'status' => $status])->id;
+    }
+    $legacyHistory = DB::table('reservasis')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+    $statusMigration->down();
+    check($legacyHistory === DB::table('reservasis')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all(), 'Status rollback changed legacy reservations.');
+    $statusMigration->up();
+    check($legacyHistory === DB::table('reservasis')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all()
+        && Schema::hasForeignKey('reservasis', ['sewa_id']) && Schema::hasIndex('reservasis', ['sewa_id'], 'unique'), 'Status expansion lost legacy data/FK/index.');
+    DB::table('reservasis')->whereIn('id', $legacyReservationIds)->delete();
+    echo "PASS reservation status migration: legacy rows preserved through down/up, FK/unique intact\n";
     $lease = Sewa::create(['kamar_id' => $room->id, 'penghuni_id' => $resident->id, 'tanggal_masuk' => '2026-10-01', 'tanggal_keluar' => '2026-12-01', 'biaya_bulanan' => 550000, 'status' => 'aktif']);
     $payment = Pembayaran::create(['sewa_id' => $lease->id, 'periode' => '2026-10-01', 'jumlah' => 550000, 'metode' => 'cash', 'status' => 'belum_lunas']);
 
@@ -669,6 +684,25 @@ try {
         && $conversionReservation->fresh()->status === 'dikonversi' && $conversionRoom->fresh()->status === 'terisi', 'Recovered conversion link/room inconsistent.');
     check($financialCounts === [Pembayaran::count(), Invoice::count(), Keuangan::count()], 'Conversion retry created unexpected financial records.');
     echo "PASS conversion rollback: lease insert observed, no orphan/history/finance mutation before cleanup, recovery one linked lease\n";
+    $expiryRoom = Kamar::create(['nomor' => 'MYSQL-EXPIRY', 'tipe' => 'Test', 'harga_bulanan' => 550000, 'status' => 'tersedia']);
+    $expiring = Reservasi::create(['kamar_id' => $expiryRoom->id, 'penghuni_id' => $resident->id,
+        'tanggal_reservasi' => now()->subMonth()->toDateString(), 'rencana_masuk' => now()->subMonth()->toDateString(),
+        'rencana_keluar' => now()->toDateString(), 'status' => 'dikonfirmasi']);
+    $conversionHistory = $conversionReservation->fresh()->getAttributes();
+    check(Artisan::call('reservations:expire') === 0 && $expiring->fresh()->status === 'kedaluwarsa', 'MySQL reservation expiry failed.');
+    $expiryHistory = $expiring->fresh()->getAttributes();
+    check(Artisan::call('reservations:expire') === 0 && $expiryHistory === $expiring->fresh()->getAttributes()
+        && $conversionHistory === $conversionReservation->fresh()->getAttributes(), 'Expiry retry mutated history.');
+    $reservationHistory = DB::table('reservasis')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+    try {
+        $statusMigration->down();
+        throw new RuntimeException('Lossy enum rollback unexpectedly succeeded.');
+    } catch (RuntimeException $exception) {
+        check(str_contains($exception->getMessage(), 'Rollback status reservasi ditolak'), 'Unexpected enum rollback failure.');
+    }
+    check($reservationHistory === DB::table('reservasis')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all()
+        && Schema::hasForeignKey('reservasis', ['sewa_id']) && Schema::hasIndex('reservasis', ['sewa_id'], 'unique'), 'Blocked enum rollback changed data/FK/index.');
+    echo "PASS reservation lifecycle: expiry idempotent, lossy enum rollback refused with converted/expired history intact\n";
 } catch (Throwable $exception) {
     fwrite(STDERR, get_class($exception).': '.$exception->getMessage()."\n");
     exit(1);
