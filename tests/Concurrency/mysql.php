@@ -651,6 +651,7 @@ try {
     }
 
     [$conversionRoom, $conversionReservation] = $conversionFixtures['ROLLBACK'];
+    $conversionReservation->update(['catatan' => 'Synthetic conversion rollback probe']);
     $history = [$conversionReservation->fresh()->getAttributes(), $conversionRoom->fresh()->getAttributes()];
     $leaseCount = Sewa::count();
     $financialCounts = [Pembayaran::count(), Invoice::count(), Keuangan::count()];
@@ -660,7 +661,7 @@ try {
             $leaseInserted = true;
         }
     });
-    DB::statement('ALTER TABLE reservasis ADD CONSTRAINT synthetic_conversion_failure CHECK (id <> '.$conversionReservation->id." OR status <> 'dikonversi')");
+    DB::statement("ALTER TABLE reservasis ADD CONSTRAINT synthetic_conversion_failure CHECK (catatan <> 'Synthetic conversion rollback probe' OR status <> 'dikonversi')");
     try {
         operate('convert', $conversionReservation->id, 0);
         throw new RuntimeException('Expected reservation-close failure was not raised.');
