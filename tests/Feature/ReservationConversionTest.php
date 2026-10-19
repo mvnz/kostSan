@@ -2,13 +2,16 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\ReservasiController;
 use App\Models\Kamar;
 use App\Models\Penghuni;
 use App\Models\Reservasi;
 use App\Models\Sewa;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class ReservationConversionTest extends TestCase
@@ -127,5 +130,36 @@ class ReservationConversionTest extends TestCase
 
         $this->assertDatabaseCount('sewas', 1);
         $this->assertDatabaseHas('reservasis', ['id' => $this->reservation->id, 'status' => 'dikonversi', 'sewa_id' => $lease->id]);
+    }
+
+    public function test_requests_bound_before_conversion_cannot_cancel_or_delete_its_history(): void
+    {
+        $bound = Reservasi::findOrFail($this->reservation->id);
+        $this->post('/sewas', $this->payload())->assertRedirect('/kamars/sewa')->assertSessionHasNoErrors();
+        $lease = Sewa::sole();
+        $history = [$this->reservation->fresh()->getAttributes(), $lease->getAttributes(), $this->room->fresh()->getAttributes()];
+
+        foreach (['cancel', 'delete'] as $action) {
+            try {
+                if ($action === 'cancel') {
+                    app(ReservasiController::class)->update(Request::create('/reservasis/'.$bound->id, 'PUT', [
+                        'kamar_id' => $this->room->id, 'penghuni_id' => $this->resident->id,
+                        'tanggal_reservasi' => '2026-10-10', 'rencana_masuk' => '2026-11-01',
+                        'rencana_keluar' => '2027-02-01', 'uang_muka' => 0, 'status' => 'dibatalkan',
+                    ]), $bound);
+                } else {
+                    app(ReservasiController::class)->destroy($bound);
+                }
+                $this->fail('A request bound before conversion modified its history: '.$action);
+            } catch (ValidationException $exception) {
+                $this->assertArrayHasKey('reservasi', $exception->errors());
+            }
+            $this->assertSame($history, [$this->reservation->fresh()->getAttributes(), $lease->fresh()->getAttributes(), $this->room->fresh()->getAttributes()]);
+        }
+        $this->assertDatabaseCount('reservasis', 1);
+        $this->assertDatabaseCount('sewas', 1);
+        $this->assertDatabaseCount('pembayarans', 0);
+        $this->assertDatabaseCount('keuangans', 0);
+        $this->assertSame($lease->id, $this->reservation->fresh()->sewa_id);
     }
 }
