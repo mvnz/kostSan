@@ -144,6 +144,7 @@ test('public computed overflow preserves link and explains operator recovery', a
     await page.locator('#biaya_tambahan').fill('0');
     await page.getByRole('button', { name: 'Simpan', exact: true }).click();
     await expect(page.locator('.alert-success')).toBeVisible();
+    await page.context().clearCookies();
     await page.goto(url);
     await chooseDropdown(page, 'metode', 'Cash');
     await page.getByRole('button', { name: 'Kirim Pembayaran', exact: true }).click();
