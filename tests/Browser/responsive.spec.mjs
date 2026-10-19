@@ -65,6 +65,29 @@ test('admin can navigate core pages and complete a reservation form', async ({ p
     await expect(page.locator('.alert-success')).toBeVisible();
 });
 
+test('manual payment amount rejects overflow and recovers without losing form input', async ({ page }, testInfo) => {
+    await login(page, 'admin');
+    await page.goto('/pembayarans/create');
+    await chooseDropdown(page, 'sewa_id', 'BROWSER-01');
+    const period = { phone: '2027-08-01', tablet: '2027-09-01', desktop: '2027-10-01' }[testInfo.project.name];
+    await page.locator('[name="periode"]').fill(period);
+    await page.getByLabel('Jumlah', { exact: true }).fill('10000000000.00');
+    await page.getByRole('button', { name: 'Simpan', exact: true }).click();
+    await expect(page).toHaveURL(/\/pembayarans\/create$/);
+    expect(await page.locator('#payment-amount').evaluate(el => el.validity.rangeOverflow)).toBe(true);
+    // Bypass only native form validation to exercise the server's validation and recovery UI.
+    await page.locator('form[action$="/pembayarans"]').evaluate(form => { form.noValidate = true; });
+    await page.getByRole('button', { name: 'Simpan', exact: true }).click();
+    await expect(page.locator('#payment-amount-error')).toContainText('Jumlah maksimal Rp9.999.999.999,99');
+    await expect(page.locator('#payment-amount')).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.locator('[name="periode"]')).toHaveValue(period);
+    await checkLayout(page, testInfo, 'payment-amount-error');
+    await page.getByLabel('Jumlah', { exact: true }).fill('650000.25');
+    await page.getByRole('button', { name: 'Simpan', exact: true }).click();
+    await expect(page).toHaveURL(/\/pembayarans$/);
+    await expect(page.locator('.alert-success')).toBeVisible();
+});
+
 test('viewer reads details without gaining mutation rights', async ({ page }) => {
     await login(page, 'viewer');
     await page.goto('/reservasis/1');

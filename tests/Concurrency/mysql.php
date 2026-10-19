@@ -810,6 +810,54 @@ try {
         }
         echo "PASS {$case}-first/convert: stale source rejected, no orphan/finance mutation, fresh retry preserves intended outcome\n";
     }
+    $amountRoom = Kamar::create(['nomor' => 'MYSQL-AMOUNT', 'tipe' => 'Test', 'harga_bulanan' => 550000, 'status' => 'terisi']);
+    $amountLease = Sewa::create(['kamar_id' => $amountRoom->id, 'penghuni_id' => $resident->id,
+        'tanggal_masuk' => '2026-10-01', 'biaya_bulanan' => 550000, 'status' => 'aktif']);
+    Illuminate\Support\Facades\Storage::fake('local');
+    $amountPayload = ['sewa_id' => $amountLease->id, 'periode' => '2026-10-01', 'metode' => 'cash', 'jumlah' => '550000.25'];
+    $counts = [Pembayaran::count(), Invoice::count(), Keuangan::count()];
+    foreach (['10000000000.00', '1e20'] as $amount) {
+        try {
+            app(PembayaranController::class)->store(Request::create('/pembayarans', 'POST', array_replace($amountPayload, ['jumlah' => $amount]), [], [
+                'bukti_pembayaran' => Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 10, 'application/pdf'),
+            ]));
+            throw new RuntimeException('Overflow payment creation accepted.');
+        } catch (ValidationException $exception) {
+            check(array_keys($exception->errors()) === ['jumlah'], 'Unexpected overflow validation field.');
+        }
+        check($counts === [Pembayaran::count(), Invoice::count(), Keuangan::count()]
+            && Illuminate\Support\Facades\Storage::disk('local')->allFiles() === [], 'Invalid payment created records or proof.');
+    }
+    app(PembayaranController::class)->store(Request::create('/pembayarans', 'POST', array_replace($amountPayload, ['jumlah' => '0'])));
+    $amountPayment = Pembayaran::where('sewa_id', $amountLease->id)->sole();
+    check((string) $amountPayment->jumlah === '0.00' && (string) $amountPayment->invoice->jumlah_tagihan === '0.00', 'Zero payment compatibility changed.');
+    $oldProof = 'bukti-pembayaran-sewa/synthetic-original.pdf';
+    Illuminate\Support\Facades\Storage::disk('local')->put($oldProof, 'Synthetic original proof');
+    $amountPayment->update(['bukti_pembayaran_path' => $oldProof]);
+    $amountHistory = [$amountPayment->fresh()->getAttributes(), $amountPayment->invoice->fresh()->getAttributes()];
+    foreach (['10000000000.00', '1e20'] as $amount) {
+        try {
+            app(PembayaranController::class)->update(Request::create('/pembayarans/'.$amountPayment->id, 'PUT', array_replace($amountPayload, ['jumlah' => $amount]), [], [
+                'bukti_pembayaran' => Illuminate\Http\UploadedFile::fake()->create('replacement.pdf', 10, 'application/pdf'),
+            ]), $amountPayment->fresh());
+            throw new RuntimeException('Overflow payment update accepted.');
+        } catch (ValidationException $exception) {
+            check(array_keys($exception->errors()) === ['jumlah'], 'Unexpected update overflow validation field.');
+        }
+        check($amountHistory === [$amountPayment->fresh()->getAttributes(), $amountPayment->invoice->fresh()->getAttributes()]
+            && Illuminate\Support\Facades\Storage::disk('local')->allFiles() === [$oldProof]
+            && Keuangan::count() === $counts[2], 'Rejected update changed payment/invoice/proof/ledger.');
+    }
+    app(PembayaranController::class)->update(Request::create('/pembayarans/'.$amountPayment->id, 'PUT', array_replace($amountPayload, ['jumlah' => '9999999999.99'])), $amountPayment->fresh());
+    operate('approve', $amountPayment->id, 0);
+    operate('approve', $amountPayment->id, 0);
+    check((string) $amountPayment->fresh()->jumlah === '9999999999.99'
+        && Invoice::where('payment_id', $amountPayment->id)->count() === 1
+        && (string) $amountPayment->invoice->fresh()->jumlah_tagihan === '9999999999.99'
+        && $amountPayment->invoice->fresh()->status === 'lunas'
+        && Keuangan::where('payment_id', $amountPayment->id)->count() === 1
+        && (string) Keuangan::where('payment_id', $amountPayment->id)->value('jumlah') === '9999999999.99', 'Maximum payment/invoice/approval retry lost precision or duplicated income.');
+    echo "PASS manual payment amount boundary: overflow create/update rejected without records/proof changes, zero accepted, maximum9999999999.99 exact through invoice and approval retry one income\n";
 } catch (Throwable $exception) {
     fwrite(STDERR, get_class($exception).': '.$exception->getMessage()."\n");
     exit(1);
