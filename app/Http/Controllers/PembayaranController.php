@@ -16,6 +16,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
 class PembayaranController extends Controller
@@ -29,12 +30,22 @@ class PembayaranController extends Controller
 
     private function filteredPayments(Request $request): Builder
     {
-        $filters = $request->validate([
+        $validator = Validator::make($request->query(), [
             'q' => ['nullable', 'string', 'max:100'],
             'bulan' => ['nullable', 'date_format:Y-m'],
             'status' => ['nullable', 'in:lunas,belum_lunas'],
             'metode' => ['nullable', 'in:cash,transfer,e-wallet'],
+        ], [
+            'q.string' => 'Pencarian harus berupa teks.',
+            'q.max' => 'Pencarian maksimal 100 karakter.',
+            'bulan.date_format' => 'Format bulan harus YYYY-MM.',
+            'status.in' => 'Status pembayaran tidak valid.',
+            'metode.in' => 'Metode pembayaran tidak valid.',
         ]);
+        if ($validator->fails()) {
+            throw (new ValidationException($validator))->redirectTo(route('pembayarans.index'));
+        }
+        $filters = $validator->validated();
         $query = Pembayaran::with('sewa.kamar', 'sewa.penghuni');
         if (! empty($filters['bulan'])) {
             $period = Carbon::createFromFormat('!Y-m', $filters['bulan']);

@@ -140,7 +140,9 @@ class PaymentSearchTest extends TestCase
         $role = Role::create(['name' => 'Synthetic no payment access', 'menu_permissions' => ['dashboard' => ['view']]]);
         $this->actingAs(User::factory()->create(['role_id' => $role->id]));
         foreach (['/pembayarans', '/pembayarans/export'] as $path) {
-            $this->get($path.'?status=invalid')->assertForbidden();
+            $this->get($path.'?status=invalid')->assertRedirect(route('dashboard'))
+                ->assertSessionHas('error', 'Anda tidak memiliki akses ke halaman tersebut.')
+                ->assertSessionHasNoErrors();
             $this->getJson($path.'?status=invalid')->assertForbidden();
         }
     }

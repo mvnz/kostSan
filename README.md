@@ -55,6 +55,8 @@ Buka **Pembayaran**, isi **Penghuni atau kamar** untuk mencari sebagian nama pen
 
 CSV berisi ID pembayaran, nomor kamar, nama penghuni, periode, tanggal bayar, metode, nominal, dan status. Nominal tidak memakai pemisah ribuan sehingga mudah dijumlahkan. CSV menggunakan UTF-8 dan input yang berpotensi menjadi formula spreadsheet diberi awalan apostrof. Hak **Lihat Data Sewa** diperlukan; ekspor tidak mengirim pesan ke penghuni dan tidak mengubah transaksi. Status `belum_lunas` mencakup tagihan yang belum dibayar maupun pembayaran yang belum disetujui sesuai model saat ini.
 
+Jika URL filter daftar atau ekspor pembayaran tidak valid, browser kembali ke daftar tanpa filter dengan pesan error. Isi ulang filter yang benar lalu terapkan/ekspor kembali. Ekspor invalid tidak otomatis mengunduh seluruh data tanpa filter; klien JSON tetap menerima422 dan field error. Perilaku ini tidak mengubah hak akses atau hasil filter yang valid.
+
 ## Pengujian dan kelanjutan review
 
 ### Smoke browser dengan data sintetis
