@@ -102,6 +102,8 @@ PHPUnit memakai SQLite di memori dan data sintetis. Tes mencakup hak akses, keam
 
 Job **mysql-concurrency** memakai service MySQL 8.4 ephemeral dengan schema/user khusus. Harness `tests/Concurrency/mysql.php` menolak target lain dan schema tidak kosong, menjalankan migrasi, rollback terbaru, serta rollback/reapply seluruh migrasi **sebelum seeding**, lalu menguji dua proses controller bersamaan: approval idempotent, tagihan overlapping, reservasi bentrok, dan rollback saat ledger gagal. Parent menahan row lock sampai kedua query worker terlihat menunggu; bukan retry berurutan. Jangan jalankan pada database operasional. Kredensial sintetis workflow hanya untuk service CI; tidak ada data/notifikasi penghuni. Ini bukan suite lintas-engine penuh, bukti rollback data legacy aman, atau bukti kesesuaian versi/isolation deployment. Middleware izin/CSRF tetap diuji oleh suite HTTP/browser, bukan controller harness ini.
 
+Harness yang sama juga memeriksa daftar/CSV pembayaran langsung pada MySQL: filter gabungan, batas Februari kabisat, karakter pencarian literal, UTF-8/nama berkoma/formula/nominal desimal, kesamaan ID hasil, dan penolakan input invalid tanpa write. Ini bukan bukti kesamaan seluruh collation atau perilaku pada setiap versi MySQL; browser/HTTP tetap diperlukan untuk memeriksa redirect, pesan, dan hak akses.
+
 **Status operasional penuh belum dinyatakan siap.** Rekonsiliasi data historis pembayaran–invoice–buku keuangan dan persaingan transaksi pada database deployment masih memerlukan verifikasi lanjutan. Baca catatan terbaru dalam [`docs/reviews`](docs/reviews) sebelum melanjutkan pekerjaan. Tes tidak menghubungi layanan WhatsApp, memakai data penghuni asli, atau mengubah server/database produksi.
 
 ## Tagihan massal pilihan
