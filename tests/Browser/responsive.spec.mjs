@@ -122,3 +122,30 @@ test('guest cannot mutate without a CSRF token', async ({ page }) => {
     await page.goto('/reservasis');
     await expect(page).toHaveURL(/\/login$/);
 });
+
+test('public computed overflow preserves link and explains operator recovery', async ({ page }, testInfo) => {
+    const token = `synthetic-public-total-${testInfo.project.name}`.padEnd(64, '0');
+    const url = `/pembayaran/sewa/${token}`;
+    await page.goto(url);
+    await chooseDropdown(page, 'metode', 'Cash');
+    await page.locator('[name="keterangan"]').fill('Synthetic correction request');
+    await page.getByRole('button', { name: 'Kirim Pembayaran', exact: true }).click();
+    await expect(page.locator('.alert')).toContainText('Total tagihan terlalu besar untuk diproses. Hubungi pengelola');
+    await expect(page.locator('[name="keterangan"]')).toHaveValue('Synthetic correction request');
+    await expect.poll(() => page.locator('link[href$="bootstrap.min.css"]').evaluate(el => !!el.sheet)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(2);
+    await testInfo.attach('public-total-error', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+    // Simulate the separate operator correcting the source; the public form cannot change its amount.
+    await login(page, 'admin');
+    await page.goto('/sewas');
+    const row = page.locator('tr').filter({ hasText: `BROWSER-PUBLIC-${testInfo.project.name}` });
+    const editUrl = await row.locator('a[href$="/edit"]').getAttribute('href');
+    await page.goto(editUrl);
+    await page.locator('[name="biaya_bulanan"]').fill('550000.25');
+    await page.getByRole('button', { name: 'Simpan', exact: true }).click();
+    await expect(page.locator('.alert-success')).toBeVisible();
+    await page.goto(url);
+    await chooseDropdown(page, 'metode', 'Cash');
+    await page.getByRole('button', { name: 'Kirim Pembayaran', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Pembayaran sewa berhasil dikirim', exact: true })).toBeVisible();
+});

@@ -159,7 +159,7 @@
 
             @if($errors->any())
                 <div class="alert">
-                    <strong>Data belum lengkap:</strong>
+                    <strong>Pembayaran belum dapat diproses:</strong>
                     <ul style="margin: 8px 0 0 18px; padding: 0;">
                         @foreach($errors->all() as $error)
                             <li>{{ $error }}</li>
