@@ -48,7 +48,7 @@ class ManualPaymentAmountBoundTest extends TestCase
         $old = 'bukti-pembayaran-sewa/original.pdf';
         Storage::disk('local')->put($old, 'Synthetic original proof');
         $payment = Pembayaran::create($payload + ['status' => 'belum_lunas', 'bukti_pembayaran_path' => $old]);
-        $history = $payment->getAttributes();
+        $history = $payment->fresh()->getAttributes();
         $invoice = $payment->invoice->getAttributes();
         foreach (['10000000000.00', '1e20', '-0.01', 'not-a-number'] as $amount) {
             $this->putJson('/pembayarans/'.$payment->id, array_replace($payload, ['jumlah' => $amount,
