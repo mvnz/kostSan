@@ -141,7 +141,7 @@ test('public computed overflow preserves link and explains operator recovery', a
     const row = page.locator('tr').filter({ hasText: `BROWSER-PUBLIC-${testInfo.project.name}` });
     const editUrl = await row.locator('a[href$="/edit"]').getAttribute('href');
     await page.goto(editUrl);
-    await page.locator('[name="biaya_bulanan"]').fill('550000.25');
+    await page.locator('#biaya_tambahan').fill('0');
     await page.getByRole('button', { name: 'Simpan', exact: true }).click();
     await expect(page.locator('.alert-success')).toBeVisible();
     await page.goto(url);
