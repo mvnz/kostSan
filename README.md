@@ -152,6 +152,8 @@ Log mutasi tetap menyimpan nama route dan URL untuk audit, tetapi nilai paramete
 
 Di **Keuangan**, pilih bulan dan jenis transaksi lalu tekan **Export CSV**. Kosongkan bulan untuk semua periode; Reset mengembalikan bulan saat ini. CSV mengikuti bulan/jenis, termasuk semua halaman. Pencarian teks pada tabel tidak mengubah isi ekspor. Nominal memakai dua desimal tanpa pemisah ribuan; sumber manual, otomatis, rekonsiliasi manual, atau pembalikan dan ID pembayaran dapat ditelusuri. CSV tidak berisi path bukti dan melindungi teks yang dapat dibaca sebagai formula spreadsheet. Hak Lihat Keuangan diperlukan.
 
+Jika URL ekspor berisi bulan atau jenis yang tidak valid, browser kembali ke daftar Keuangan dengan pesan error dan tidak mengunduh seluruh buku tanpa filter. Perbaiki filter lalu ekspor ulang. Klien JSON tetap menerima 422 beserta field error; hak akses dan hasil ekspor valid tidak berubah.
+
 Pendaftaran/pembayaran melalui link publik sekarang membersihkan unggahan baru bila database gagal, tanpa menghabiskan token; retry dapat dilakukan setelah masalah penyimpanan selesai. Jika storage menolak berkas, formulir menampilkan pesan pada kolom unggahan dan transaksi tidak dinyatakan sukses. Penggantian bukti manual yang gagal tetap mempertahankan bukti asli.
 
 Bukti pada Data Sewa mengikuti jaminan yang sama: create/update ditolak bila storage gagal, upload baru dibersihkan bila transaksi database rollback, dan bukti lama hanya dihapus setelah update/delete berhasil commit. Jika penghapusan fisik gagal setelah commit, path masuk antrean cleanup dan muncul sebagai ringkasan alarm Dashboard.
