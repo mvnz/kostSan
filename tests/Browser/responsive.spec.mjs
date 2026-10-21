@@ -198,7 +198,9 @@ test('invalid finance export recovers to a usable list and matching CSV', async 
     await financeKind.locator('button.bs-select-toggle').click();
     await financeKind.locator('button.dropdown-item', { hasText: 'Pemasukan' }).click();
     await expect(page.locator('#tbl-keuangan tbody tr')).toHaveCount(1);
-    await expect(page.locator('#tbl-keuangan tbody')).toContainText('Synthetic reversed manual income');
+    // Description is intentionally hidden in the phone layout; category and amount stay actionable.
+    await expect(page.locator('#tbl-keuangan tbody')).toContainText('Sewa Kamar');
+    await expect(page.locator('#tbl-keuangan tbody')).toContainText('Rp 550.000');
     const pendingDownload = page.waitForEvent('download');
     await page.getByRole('link', { name: 'Export CSV' }).click();
     const download = await pendingDownload;

@@ -24,6 +24,8 @@ Validasi lokal memakai data sintetis, SQLite dan storage temporer: focused `Fina
 
 Chromium lokal belum menjalankan skenario karena binary Playwright 1.64.1 tidak tersedia dan unduhan CDN berulang kali menghasilkan arsip 0-byte. Tiga test sempat tercatat gagal sebelum launch (bukan kegagalan assertion aplikasi). Gerbang browser akan dijalankan oleh CI dengan langkah instalasi Chromium resminya; status responsive tetap **BELUM DIUJI** sampai job tersebut sukses. Peringatan optional `fontaine` dan npm `http-proxy` tidak mengubah exit code serta bukan diperbaiki dengan dependency tanpa kebutuhan.
 
+CI pertama 39575053072: job tests dan MySQL sukses; browser 23/24 dengan hanya case baru pada ponsel gagal. Tabel memang berisi satu row pemasukan yang tepat (`Sewa Kamar`, `Rp 550.000`), tetapi assertion mencari deskripsi pada kolom yang sengaja disembunyikan konfigurasi mobile `data-mobile-cols="2,4,7"`; tablet/desktop lulus. Ini temuan kualitas tes/responsivitas, bukan alasan mengubah UI atau melonggarkan filter. Retest mengassert kategori dan nominal yang benar-benar terlihat pada ponsel, sementara ID/jenis/nominal persis tetap diperiksa dari CSV. Seluruh 24 case harus diulang di CI sebelum status responsive berubah.
+
 | Kategori | Status sementara | Bukti dan batas |
 | --- | --- | --- |
 | Functional | LULUS | Red→green HTML recovery; 5 tes/81 assertion finance mencakup valid/invalid/batas CSV, no-download dan no-mutation. |
