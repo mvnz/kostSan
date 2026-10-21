@@ -72,6 +72,23 @@ class FinanceExportTest extends TestCase
         $this->get('/keuangans')->assertOk()->assertSee('Export CSV')->assertSee('id="export-keuangan"', false);
     }
 
+    public function test_invalid_html_export_recovers_to_clean_finance_list_without_downloading_or_mutating(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $entry = $this->entry();
+        $url = '/keuangans/export?bulan=2026-13';
+
+        $this->from($url)->get($url)
+            ->assertRedirect(route('keuangans.index'))
+            ->assertSessionHasErrors('bulan');
+
+        $this->get('/keuangans')
+            ->assertOk()
+            ->assertSee('Format bulan harus YYYY-MM.');
+        $this->assertDatabaseCount('keuangans', 1);
+        $this->assertDatabaseHas('keuangans', ['id' => $entry->id, 'jumlah' => 230000.25]);
+    }
+
     public function test_export_streams_multiple_chunks_once_without_mutating_entries(): void
     {
         $role = Role::create(['name' => 'Finance view', 'menu_permissions' => ['keuangan.data_keuangan' => ['view']]]);
