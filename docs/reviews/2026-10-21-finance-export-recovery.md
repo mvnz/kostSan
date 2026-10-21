@@ -12,8 +12,28 @@ Kriteria penerimaan: HTML GET export dengan bulan/jenis invalid (termasuk array)
 
 ## Reproduksi dan perubahan
 
-Belum dijalankan. Bagian ini akan diisi dengan SHA/tree test-only, expected/actual kegagalan, implementasi final, dan self-review diff.
+Tes regresi ditambahkan sebelum controller berubah. Source test-only `ccf83ec7a549b2461226e2ccd0b287834a1bbb63`, tree `91a382ce1affa0a516e00ef6bb7c116c14fd51d8`: satu tes/dua assertion gagal. Expected `http://localhost/keuangans`, actual `http://localhost/keuangans/export?bulan=2026-13`; error validasi bulan memang ada, tetapi browser kembali ke URL rusak yang sama. Ini membuktikan perilaku nyata response HTML, bukan pemeriksaan string implementasi. JSON dan query valid sebelumnya tidak gagal.
+
+Fix pada `deb7c09fd66977c9f67a78a5286f98bab35b89e6`, tree `753b1bbb081f345a091b6039d2844f096c10463c`, mengganti shortcut validasi dengan `Validator` dan `ValidationException::redirectTo()` ke named route daftar Keuangan. Rules lama dipertahankan; pesan bulan/jenis dilokalkan; JSON tetap 422 melalui exception yang sama. Matrix backend mencakup bulan/jenis scalar dan array invalid, tanpa header download, record tidak berubah, serta guest/role tanpa izin tidak melewati middleware. README menjelaskan pemulihan operator. Tes browser memakai same-invalid Referer, memeriksa pesan/no-download, kemudian memilih jenis melalui dropdown visual dan mencocokkan satu row tabel dengan CSV ID/jenis/nominal.
+
+Self-review eksplisit: diff aplikasi sembilan baris tambah/satu baris hapus dan memakai pola yang sudah terbukti di controller Pembayaran. Tidak ada perubahan query valid, format/nama CSV, perhitungan uang/tanggal, transaksi/lock/concurrency, schema/migrasi, relasi, permission, file lifecycle, atau dependency. Auth/permission middleware masih berjalan sebelum controller. Input array tidak menimbulkan TypeError dan tetap masuk error bag. Invalid HTML tidak fallback ke ekspor seluruh data. Error dirender oleh alert Blade existing yang escaped. Tes CSV browser memakai fixture tanpa koma; parser umum untuk koma/newline/formula tetap dicakup `FinanceExportTest`. Tidak ada N+1 baru. Asumsi pesan flash lintas beberapa request berurutan di tes diperbaiki menjadi kontrak error bag+alert; teks lokal tetap diperiksa langsung pada browser. Perubahan ini tidak menyelesaikan staging, seluruh filter modul lain, atau rekonsiliasi data historis.
 
 ## Validasi dan kelanjutan
 
-Belum dijalankan. Bagian ini akan diisi dengan source final yang diuji, semua perintah/hasil, tujuh kategori pengujian, PR/CI, batasan, dan prioritas berikutnya.
+Validasi lokal memakai data sintetis, SQLite dan storage temporer: focused `FinanceExportTest` 5 tes/81 assertion; suite backend penuh 218 tes/1.833 assertion; frontend 11/11; build Vite dan `kost:check-ui` lulus; Composer/npm audit 0 advisory; `git diff --check` lulus. Database SQLite terisolasi menjalankan 44 migrasi up/down/up. Smoke HTTP dengan salinan fixture menjalankan admin pada sepuluh halaman, CSRF, approval retry, invoice/ledger; viewer pada sepuluh halaman/detail dan penolakan edit. Percobaan smoke pertama gagal karena harness temporer belum membuat folder session, bukan aplikasi; folder ditambahkan dan seluruh skenario diulang sampai lulus.
+
+Chromium lokal belum menjalankan skenario karena binary Playwright 1.64.1 tidak tersedia dan unduhan CDN berulang kali menghasilkan arsip 0-byte. Tiga test sempat tercatat gagal sebelum launch (bukan kegagalan assertion aplikasi). Gerbang browser akan dijalankan oleh CI dengan langkah instalasi Chromium resminya; status responsive tetap **BELUM DIUJI** sampai job tersebut sukses. Peringatan optional `fontaine` dan npm `http-proxy` tidak mengubah exit code serta bukan diperbaiki dengan dependency tanpa kebutuhan.
+
+| Kategori | Status sementara | Bukti dan batas |
+| --- | --- | --- |
+| Functional | LULUS | Red→green HTML recovery; 5 tes/81 assertion finance mencakup valid/invalid/batas CSV, no-download dan no-mutation. |
+| User flow & transaction | LULUS | Smoke HTTP admin/viewer, CSRF, approval retry/invoice/ledger serta suite transaksi existing; perubahan ini read-only dan diuji SQLite lokal. MySQL representatif menunggu CI. |
+| Responsive | BELUM DIUJI | Test browser tiga viewport sudah ditulis, tetapi Chromium lokal gagal dipasang sebelum launch. Menunggu CI browser-smoke; build bukan bukti responsif. |
+| Bug & regression | LULUS | Reproduksi merah tersimpan; final backend 218/1.833, frontend 11, build/UI/migrasi/audit lulus. |
+| Retest | LULUS | Same-invalid Referer dan matrix scalar/array diulang pada source fix; suite terdampak dan penuh lulus. |
+| User testing | BELUM DIUJI | Simulasi agen admin/viewer otomatis lulus; belum ada partisipasi atau bukti UAT manusia. |
+| Security | LULUS terbatas | Login/permission/CSRF, input invalid, no-download/no-mutation, CSV formula/private-path suite existing, dan audit dependency lulus. Bukan pentest lengkap atau bukti semua IDOR/secret. |
+
+Skenario UAT disiapkan: operator membuka URL ekspor dengan bulan/jenis rusak, memahami pesan, memilih ulang bulan dan jenis, memastikan tabel hanya menampilkan transaksi yang dimaksud, lalu mencocokkan ID/jenis/nominal CSV; role tanpa hak Keuangan harus tetap ditolak. Ulangi pada ponsel/tablet/desktop. Belum menghubungi pengguna nyata.
+
+PR/CI, SHA/tree penutupan, hasil MySQL dan browser akan ditambahkan setelah publikasi. PR harus tetap draft dan tidak merge jika dependensi PR #4–16, staging/DDL/storage, browser, atau UAT belum memenuhi gerbang. Prioritas berikutnya adalah review/integrasi stack secara bertahap dan validasi staging/DB deployment; jangan menduplikasi fix pembayaran PR #16 atau mengembangkan fitur baru di atas blocker.
