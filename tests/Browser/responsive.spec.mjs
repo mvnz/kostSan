@@ -182,3 +182,34 @@ test('invalid payment filters recover to a usable list and matching CSV', async 
     expect(columns[6]).toBe('550000.00');
     expect(columns[7]).toBe('belum_lunas');
 });
+
+test('invalid finance export recovers to a usable list and matching CSV', async ({ page }, testInfo) => {
+    await login(page, 'admin');
+    let downloads = 0;
+    page.on('download', () => { downloads++; });
+    const invalidPath = '/keuangans/export?bulan=2026-99';
+    await page.goto(invalidPath, { referer: new URL(invalidPath, 'http://127.0.0.1:8115').href });
+    await expect(page).toHaveURL(/\/keuangans$/);
+    await expect(page.locator('.alert-danger')).toContainText('Format bulan harus YYYY-MM.');
+    expect(downloads, 'Invalid finance export must not download unfiltered records').toBe(0);
+    await checkLayout(page, testInfo, 'finance-export-recovery');
+
+    const financeKind = page.locator('#filter-jenis-keuangan').locator('..');
+    await financeKind.locator('button.bs-select-toggle').click();
+    await financeKind.locator('button.dropdown-item', { hasText: 'Pemasukan' }).click();
+    await expect(page.locator('#tbl-keuangan tbody tr')).toHaveCount(1);
+    // Description is intentionally hidden in the phone layout; category and amount stay actionable.
+    await expect(page.locator('#tbl-keuangan tbody')).toContainText('Sewa Kamar');
+    await expect(page.locator('#tbl-keuangan tbody')).toContainText('Rp 550.000');
+    const pendingDownload = page.waitForEvent('download');
+    await page.getByRole('link', { name: 'Export CSV' }).click();
+    const download = await pendingDownload;
+    expect(download.suggestedFilename()).toMatch(/^keuangan-.*\.csv$/);
+    const csv = await readFile(await download.path(), 'utf8');
+    const lines = csv.replace(/^\uFEFF/, '').trim().split(/\r?\n/);
+    expect(lines).toHaveLength(2);
+    const columns = lines[1].split(',');
+    expect(columns[0]).toBe('1');
+    expect(columns[2]).toBe('pemasukan');
+    expect(columns[5]).toBe('550000.25');
+});

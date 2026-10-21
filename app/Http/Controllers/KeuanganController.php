@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
 class KeuanganController extends Controller
@@ -46,10 +47,17 @@ class KeuanganController extends Controller
 
     public function export(Request $request)
     {
-        $filters = $request->validate([
+        $validator = Validator::make($request->query(), [
             'bulan' => ['nullable', 'date_format:Y-m'],
             'jenis' => ['nullable', 'in:pemasukan,pengeluaran'],
+        ], [
+            'bulan.date_format' => 'Format bulan harus YYYY-MM.',
+            'jenis.in' => 'Jenis transaksi tidak valid.',
         ]);
+        if ($validator->fails()) {
+            throw (new ValidationException($validator))->redirectTo(route('keuangans.index'));
+        }
+        $filters = $validator->validated();
         $query = Keuangan::with('reversalSource', 'originalReversals');
         if (! empty($filters['bulan'])) {
             $start = CarbonImmutable::createFromFormat('!Y-m', $filters['bulan']);

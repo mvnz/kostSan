@@ -64,12 +64,40 @@ class FinanceExportTest extends TestCase
     {
         $this->get('/keuangans/export')->assertRedirect('/login');
         $role = Role::create(['name' => 'No finance', 'menu_permissions' => ['dashboard' => ['view']]]);
-        $this->actingAs(User::factory()->create(['role_id' => $role->id]))->getJson('/keuangans/export')->assertForbidden();
+        $unauthorized = User::factory()->create(['role_id' => $role->id]);
+        $this->actingAs($unauthorized)->getJson('/keuangans/export')->assertForbidden();
+        $this->actingAs($unauthorized)->get('/keuangans/export?bulan=2026-13')
+            ->assertRedirect(route('dashboard'))
+            ->assertSessionHas('error')
+            ->assertSessionDoesntHaveErrors('bulan');
         $this->actingAs(User::factory()->create());
-        foreach (['bulan=2026-13', 'bulan=invalid', 'jenis=invalid'] as $query) {
+        foreach (['bulan=2026-13', 'bulan=invalid', 'bulan%5B%5D=2026-10', 'jenis=invalid', 'jenis%5B%5D=pemasukan'] as $query) {
             $this->getJson('/keuangans/export?'.$query)->assertUnprocessable();
         }
         $this->get('/keuangans')->assertOk()->assertSee('Export CSV')->assertSee('id="export-keuangan"', false);
+    }
+
+    public function test_invalid_html_export_recovers_to_clean_finance_list_without_downloading_or_mutating(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $entry = $this->entry();
+        foreach ([
+            ['/keuangans/export?bulan=2026-13', 'bulan'],
+            ['/keuangans/export?bulan%5B%5D=2026-10', 'bulan'],
+            ['/keuangans/export?jenis=invalid', 'jenis'],
+            ['/keuangans/export?jenis%5B%5D=pemasukan', 'jenis'],
+        ] as [$url, $field]) {
+            $this->from($url)->get($url)
+                ->assertRedirect(route('keuangans.index'))
+                ->assertHeaderMissing('Content-Disposition')
+                ->assertSessionHasErrors($field);
+        }
+
+        $this->get('/keuangans')
+            ->assertOk()
+            ->assertSee('alert-danger', false);
+        $this->assertDatabaseCount('keuangans', 1);
+        $this->assertDatabaseHas('keuangans', ['id' => $entry->id, 'jumlah' => 230000.25]);
     }
 
     public function test_export_streams_multiple_chunks_once_without_mutating_entries(): void
